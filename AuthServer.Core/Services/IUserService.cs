@@ -8,6 +8,6 @@ namespace AuthServer.Core.Services
 {
     public interface IUserService
     {
-        public int MyProperty { get; set; }
+        
     }
 }
