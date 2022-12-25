@@ -26,34 +26,40 @@ namespace AuthServer.Data.Repositories
             await _dbSet.AddAsync(entity);
         }
 
-        public Task<IQueryable<TEntity>> GetAllAsync()
+        public async Task<IQueryable<TEntity>> GetAllAsync()
         {
-            throw new NotImplementedException();
+            return _dbSet.AsNoTracking().AsQueryable();
         }
 
-        public Task<IEnumerable<TEntity>> GetAllWithoutQueryAsync()
+        public async Task<IEnumerable<TEntity>> GetAllWithoutQueryAsync()
         {
-            throw new NotImplementedException();
+            return await _dbSet.AsNoTracking().ToListAsync();
         }
 
-        public Task<TEntity> GetByIdAsync(int id)
+        public async Task<TEntity> GetByIdAsync(int id)
         {
-            throw new NotImplementedException();
+            var entity = await _dbSet.FindAsync(id);
+            if (entity != null)
+            {
+                _context.Entry(entity).State = EntityState.Detached;
+            }
+            return entity;
         }
 
         public void Remove(TEntity entity)
         {
-            throw new NotImplementedException();
+            _dbSet.Remove(entity);  
         }
 
         public TEntity Update(TEntity entity)
         {
-            throw new NotImplementedException();
+            _context.Entry(entity).State = EntityState.Added;
+            return entity;
         }
 
         public IQueryable<TEntity> Where(Expression<Func<TEntity, bool>> predicate)
         {
-            throw new NotImplementedException();
+            return _dbSet.Where(predicate);  
         }
     }
 }
