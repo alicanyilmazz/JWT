@@ -26,12 +26,12 @@ namespace AuthServer.Data.Repositories
             await _dbSet.AddAsync(entity);
         }
 
-        public async Task<IQueryable<TEntity>> GetAllAsync()
+        public IQueryable<TEntity> GetAll()
         {
             return _dbSet.AsNoTracking().AsQueryable();
         }
 
-        public async Task<IEnumerable<TEntity>> GetAllWithoutQueryAsync()
+        public async Task<IEnumerable<TEntity>> GetAllAsync()
         {
             return await _dbSet.AsNoTracking().ToListAsync();
         }
