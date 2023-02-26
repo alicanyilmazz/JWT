@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace AuthServer.Core.Services
 {
-    internal interface IAuthenticationService
+    public interface IAuthenticationService
     {
         Task<Response<TokenDto>> CreateTokenAsync(LoginDto loginDto);
         Task<Response<TokenDto>> CreateTokenByRefreshTokenAsync(string refreshToken);
