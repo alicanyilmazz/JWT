@@ -65,7 +65,7 @@ namespace AuthServer.Service.Services
             return Response<TokenDto>.Success(token, 200);
         }
 
-        public Response<ClientTokenDto> CreateTokenByClientAsync(ClientLoginDto clientLoginDto)
+        public Response<ClientTokenDto> CreateTokenByClient(ClientLoginDto clientLoginDto)
         {
             if (clientLoginDto == null)
             {
