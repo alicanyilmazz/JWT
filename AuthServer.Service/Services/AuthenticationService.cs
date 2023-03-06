@@ -80,14 +80,44 @@ namespace AuthServer.Service.Services
             return Response<ClientTokenDto>.Success(token, 200);
         }
 
-        public Task<Response<TokenDto>> CreateTokenByRefreshTokenAsync(string refreshToken)
+        public async Task<Response<TokenDto>> CreateTokenByRefreshTokenAsync(string refreshToken)
         {
-            throw new NotImplementedException();
+            var existRefreshToken = await _userRefreshTokenRepository.Where(x => x.Code == refreshToken).SingleOrDefaultAsync();
+            if (existRefreshToken == null)
+            {
+                return Response<TokenDto>.Fail("Refresh token not found.",404,true);
+            }
+
+            var user = await _userManager.FindByIdAsync(existRefreshToken.UserId);
+            if (user == null)
+            {
+                return Response<TokenDto>.Fail("UserId not found.", 404, true);
+            }
+
+            var tokenDto = _tokenService.CreateToken(user);
+            if (tokenDto == null)
+            {
+                return Response<TokenDto>.Fail("Token can not created.", 404, false);
+            }
+            existRefreshToken.Code = tokenDto.RefreshToken;
+            existRefreshToken.Expiration = tokenDto.RefreshTokenExpration;
+            await _unitOfWork.CommitAsync();
+
+            return Response<TokenDto>.Success(tokenDto, 200);
         }
 
-        public Task<Response<NoDataDto>> RevokeRefreshTokenAsync(string refreshToken)
+        public async Task<Response<NoDataDto>> RevokeRefreshTokenAsync(string refreshToken)
         {
-            throw new NotImplementedException();
+            var existRefreshToken = await _userRefreshTokenRepository.Where(x => x.Code == refreshToken).SingleOrDefaultAsync();
+            if (existRefreshToken == null)
+            {
+                return Response<NoDataDto>.Fail("RefreshToken not found.", 404, true);
+            }
+
+            _userRefreshTokenRepository.Remove(existRefreshToken);
+            await _unitOfWork.CommitAsync();
+
+            return Response<NoDataDto>.Success(200);
         }
     }
 }
