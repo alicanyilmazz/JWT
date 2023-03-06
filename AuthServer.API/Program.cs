@@ -1,5 +1,14 @@
 using AuthServer.Core.Configuration;
+using AuthServer.Core.Repositories;
+using AuthServer.Core.Services;
+using AuthServer.Core.UnitOfWork;
+using AuthServer.Data.Context;
+using AuthServer.Data.Repositories;
+using AuthServer.Data.UnitOfWork;
+using AuthServer.Service.Services;
+using Microsoft.EntityFrameworkCore;
 using SharedLibrary.Configuration;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +18,19 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<IAuthenticationService, AuthenticationService>(); // CORE , SERVICE
+builder.Services.AddScoped<IUserService, UserService>(); // CORE , SERVICE
+builder.Services.AddScoped<ITokenService, TokenService>(); // CORE , SERVICE
+builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>)); // CORE , DATA
+builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
+builder.Services.AddDbContext<AppDbContext>(x =>
+{
+    x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>
+    {
+        option.MigrationsAssembly(Assembly.GetAssembly(typeof(AppDbContext)).GetName().Name);
+    });
+});
 builder.Services.Configure<CustomTokenOption>(builder.Configuration.GetSection("TokenOption"));
 builder.Services.Configure<List<Client>>(builder.Configuration.GetSection("Clients"));
 var app = builder.Build();
