@@ -18,29 +18,25 @@ namespace AuthServer.API.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateToken(LoginDto loginDto)
         {
-            var result = await _authenticationService.CreateTokenAsync(loginDto);
-            return ActionResultInstance(result);
+            return ActionResultInstance(await _authenticationService.CreateTokenAsync(loginDto));
         }
 
         [HttpPost]
         public IActionResult CreateTokenByClient(ClientLoginDto clientLoginDto)
         {
-            var result = _authenticationService.CreateTokenByClient(clientLoginDto);
-            return ActionResultInstance(result);
+            return ActionResultInstance(_authenticationService.CreateTokenByClient(clientLoginDto));
         }
 
         [HttpPost]
         public async Task<IActionResult> RevokeRefreshToken(RefreshTokenDto revokeRefreshTokenDto)
         {
-            var result = await _authenticationService.CreateTokenByRefreshTokenAsync(revokeRefreshTokenDto.Token);
-            return ActionResultInstance(result);
+            return ActionResultInstance(await _authenticationService.CreateTokenByRefreshTokenAsync(revokeRefreshTokenDto.Token));
         }
 
         [HttpPost]
         public async Task<IActionResult> CreateTokenByRefreshToken(RefreshTokenDto revokeRefreshTokenDto)
         {
-            var result = await _authenticationService.CreateTokenByRefreshTokenAsync(revokeRefreshTokenDto.Token);
-            return ActionResultInstance(result);
+            return ActionResultInstance(await _authenticationService.CreateTokenByRefreshTokenAsync(revokeRefreshTokenDto.Token));
         }
     }
 }
