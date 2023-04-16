@@ -13,7 +13,7 @@ namespace AuthServer.Data.Configurations
     {
         public void Configure(EntityTypeBuilder<UserApp> builder)
         {
-            builder.Property(x=>x.Country).HasMaxLength(50);
+            builder.Property(x => x.Country).IsRequired(false);
         }
     }
 }
