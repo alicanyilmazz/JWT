@@ -49,7 +49,7 @@ builder.Services.AddAuthentication(options =>
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 }).AddJwtBearer(JwtBearerDefaults.AuthenticationScheme,option =>
 {
-    var tokenOptions = builder.Configuration.GetSection("TokenOption").Get<CustomTokenOption>();
+    var tokenOptions = builder.Configuration.GetSection("TokenOptions").Get<CustomTokenOption>();
     option.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters() {
         ValidIssuer = tokenOptions.Issuer,
         ValidAudience = tokenOptions.Audience[0],
