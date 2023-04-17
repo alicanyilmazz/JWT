@@ -51,9 +51,9 @@ namespace AuthServer.Data.Repositories
             _dbSet.Remove(entity);  
         }
 
-        public TEntity Update(TEntity entity)
+        public async Task<TEntity> Update(TEntity entity)
         {
-            _context.Entry(entity).State = EntityState.Added;
+            _context.Entry(entity).State = EntityState.Modified;
             return entity;
         }
 

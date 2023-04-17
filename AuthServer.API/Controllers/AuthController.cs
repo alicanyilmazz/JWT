@@ -30,7 +30,7 @@ namespace AuthServer.API.Controllers
         [HttpPost]
         public async Task<IActionResult> RevokeRefreshToken(RefreshTokenDto revokeRefreshTokenDto)
         {
-            return ActionResultInstance(await _authenticationService.CreateTokenByRefreshTokenAsync(revokeRefreshTokenDto.Token));
+            return ActionResultInstance(await _authenticationService.RevokeRefreshTokenAsync(revokeRefreshTokenDto.Token));
         }
 
         [HttpPost]
