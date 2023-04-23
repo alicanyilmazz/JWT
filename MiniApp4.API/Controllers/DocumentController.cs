@@ -6,6 +6,7 @@ using MiniApp4.Core.Dtos;
 using MiniApp4.Core.Entities;
 using MiniApp4.Core.Services;
 using SharedLibrary.Dtos;
+using System.Security.Claims;
 
 namespace MiniApp4.API.Controllers
 {
@@ -30,12 +31,14 @@ namespace MiniApp4.API.Controllers
             }
             if (document != null && document.Length > 0)
             {
+                var userName = HttpContext.User?.Identity?.Name;
+                var userId = User.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier);
                 string randomFileName = string.Empty;
                 randomFileName = Guid.NewGuid().ToString() + Path.GetExtension(document.FileName);
                 var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/documents", randomFileName);
                 using var stream = new FileStream(path, FileMode.Create);
                 await document.CopyToAsync(stream, cancellationToken);
-                var documentInfo = new DocumentDto { Url = "documents/" + randomFileName, DocumentId = Guid.NewGuid().ToString() };
+                var documentInfo = new DocumentDto { Url = "documents/" + randomFileName, DocumentId = userName + '|' + userId?.Value };
                 return ActionResultInstance(await _documentService.AddAsync(documentInfo));
             }
             return ActionResultInstance(Response<NoDataDto>.Fail("Documents can not be empty.", 400, true));
