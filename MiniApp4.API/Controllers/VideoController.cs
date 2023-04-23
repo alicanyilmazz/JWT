@@ -32,13 +32,13 @@ namespace MiniApp4.API.Controllers
             if (video != null && video.Length > 0)
             {
                 var userName = HttpContext.User?.Identity?.Name;
-                var userId = User.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier);
+                var userIdClaim = User.Claims.FirstOrDefault(x => x.Type == ClaimTypes.NameIdentifier);
                 string randomFileName = string.Empty;
                 randomFileName = Guid.NewGuid().ToString() + Path.GetExtension(video.FileName);
                 var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/videos", randomFileName);
                 using var stream = new FileStream(path, FileMode.Create);
                 await video.CopyToAsync(stream, cancellationToken);
-                var videoInfo = new VideoDto { Url = "videos/" + randomFileName, VideoId = userName + '|' + userId?.Value };
+                var videoInfo = new VideoDto { Url = "videos/" + randomFileName, VideoId = userName + '|' + userIdClaim?.Value };
                 return ActionResultInstance(await _videoService.AddAsync(videoInfo));
             }
             return ActionResultInstance(Response<NoDataDto>.Fail("Video can not be empty.", 400, true));
