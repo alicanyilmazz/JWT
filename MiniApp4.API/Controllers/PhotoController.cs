@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MiniApp4.API.Common.Constants;
 using MiniApp4.API.Utilities.Visual;
@@ -10,6 +11,7 @@ using System.Drawing;
 
 namespace MiniApp4.API.Controllers
 {
+    [Authorize]
     [Route("api/[controller]/[action]")]
     [ApiController]
     public class PhotoController : CustomBaseController
