@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using MiniApp4.API.Utilities.Visual;
 using MiniApp4.Core.Repositories;
 using MiniApp4.Core.Services;
 using MiniApp4.Core.UnitOfWork;
@@ -21,6 +22,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>)); // CORE , DATA
 builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
+builder.Services.AddTransient<IImageServices, ImageService>();
 builder.Services.AddDbContext<AppDbContext>(x =>
 {
     x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>
