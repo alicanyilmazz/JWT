@@ -18,10 +18,12 @@ namespace MiniApp4.API.Controllers
     public class PhotoController : CustomBaseController
     {
         private readonly IService<Photo, PhotoDto> _photoService;
+        private readonly IImageServices _imageService;
 
-        public PhotoController(IService<Photo, PhotoDto> photoService)
+        public PhotoController(IService<Photo, PhotoDto> photoService, IImageServices imageService)
         {
             _photoService = photoService;
+            _imageService = imageService;
         }
 
         [HttpGet]
@@ -49,6 +51,23 @@ namespace MiniApp4.API.Controllers
                 var photoInfo = new PhotoDto { Url = "photos/" + randomFileName, PhotoId = userName + '|' + userIdClaim?.Value };
                 return ActionResultInstance(await _photoService.AddAsync(photoInfo));
             }
+            return ActionResultInstance(Response<NoDataDto>.Fail("Photo can not be empty.", 400, true));
+        }
+
+        [HttpPost]
+        [RequestSizeLimit(Magnitude.ThreeMegabytes)]
+        public async Task<IActionResult> SavePhotos(IFormFile[] photos, CancellationToken cancellationToken)
+        {
+            if (photos.Length > Magnitude.ThreeMegabytes)
+            {
+                return ActionResultInstance(Response<NoDataDto>.Fail($"Image size can not be greater than 3 MB.", 400, true));
+            }
+            await _imageService.Process(photos.Select(x => new ImageInputModel
+            {
+                Name = x.FileName,
+                Type = x.ContentType,
+                Content = x.OpenReadStream()
+            }));
             return ActionResultInstance(Response<NoDataDto>.Fail("Photo can not be empty.", 400, true));
         }
 
