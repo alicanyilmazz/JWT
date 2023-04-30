@@ -11,17 +11,14 @@ namespace MiniApp4.API.Utilities.Visual
         private const int FullScreenWidth = 1000;
         public async Task Process(IEnumerable<ImageInputModel> images)
         {
-            var tasks = new List<Task>();
-            foreach (var image in images)
+            var tasks = images.Select(image => Task.Run(async () =>
             {
-                tasks.Add(Task.Run(() =>
-                {
-                    using var imageResult = Image.Load(image.Content);
-                    SaveImageAsync(imageResult, $"Original_{image.Name}", imageResult.Width);
-                    SaveImageAsync(imageResult, $"FullScreen_{image.Name}", FullScreenWidth);
-                    SaveImageAsync(imageResult, $"Thumbnail_{image.Name}", ThumbnailWidth);
-                }));
-            }
+                using var imageResult = await Image.LoadAsync(image.Content);
+                await SaveImageAsync(imageResult, $"Original_{image.Name}", imageResult.Width);
+                await SaveImageAsync(imageResult, $"FullScreen_{image.Name}", FullScreenWidth);
+                await SaveImageAsync(imageResult, $"Thumbnail_{image.Name}", ThumbnailWidth);
+            })).ToList();
+           
             await Task.WhenAll(tasks);
         }
 
