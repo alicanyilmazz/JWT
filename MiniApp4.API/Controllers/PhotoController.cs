@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MiniApp4.API.Common.Constants;
 using MiniApp4.API.Utilities.Visual;
+using MiniApp4.API.Utilities.Visual.Abstract;
+using MiniApp4.API.Utilities.Visual.Concrete;
 using MiniApp4.Core.Dtos;
 using MiniApp4.Core.Entities;
 using MiniApp4.Core.Services;
@@ -18,12 +20,12 @@ namespace MiniApp4.API.Controllers
     public class PhotoController : CustomBaseController
     {
         private readonly IService<Photo, PhotoDto> _photoService;
-        private readonly IImageServices _imageService;
+        private readonly IImageManager _imageManager;
 
-        public PhotoController(IService<Photo, PhotoDto> photoService, IImageServices imageService)
+        public PhotoController(IService<Photo, PhotoDto> photoService, IImageManager imageManager)
         {
             _photoService = photoService;
-            _imageService = imageService;
+            _imageManager = imageManager;
         }
 
         [HttpGet]
@@ -62,7 +64,7 @@ namespace MiniApp4.API.Controllers
             {
                 return ActionResultInstance(Response<NoDataDto>.Fail($"Image size can not be greater than 3 MB.", 400, true));
             }
-            await _imageService.Process(photos.Select(x => new ImageInputModel
+            await _imageManager.Process(new ImageServerService(),photos.Select(x => new ImageInputModel
             {
                 Name = x.FileName,
                 Type = x.ContentType,
