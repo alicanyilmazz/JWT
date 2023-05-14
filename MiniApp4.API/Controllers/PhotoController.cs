@@ -1,15 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using MiniApp4.API.Common.Constants;
-using MiniApp4.API.Utilities.Visual;
-using MiniApp4.API.Utilities.Visual.Abstract;
-using MiniApp4.API.Utilities.Visual.Concrete;
 using MiniApp4.Core.Dtos;
 using MiniApp4.Core.Entities;
 using MiniApp4.Core.Services;
 using SharedLibrary.Dtos;
-using System.Drawing;
 using System.Security.Claims;
 
 namespace MiniApp4.API.Controllers
@@ -20,7 +14,6 @@ namespace MiniApp4.API.Controllers
     public class PhotoController : CustomBaseController
     {
         private readonly IService<Photo, PhotoDto> _photoService;
-
 
         public PhotoController(IService<Photo, PhotoDto> photoService)
         {
@@ -36,7 +29,7 @@ namespace MiniApp4.API.Controllers
         [HttpPost]
         public async Task<IActionResult> SavePhoto(IFormFile photo, CancellationToken cancellationToken)
         {
-            if (photo.Length > Magnitude.ThreeMegabytes)
+            if (photo.Length > 3 * 1024 * 1024)
             {
                 return ActionResultInstance(Response<NoDataDto>.Fail($"Image size can not be greater than 3 MB.", 400, true));
             }

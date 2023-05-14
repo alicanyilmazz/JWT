@@ -1,15 +1,24 @@
-﻿using MiniApp4.API.Utilities.Visual.Abstract;
-using SixLabors.ImageSharp;
+﻿using MiniApp3.Core.Entities;
+using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Services;
+using MiniApp3.Core.UnitOfWork;
+using SharedLibrary.Dtos;
 using SixLabors.ImageSharp.Formats.Jpeg;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 using Image = SixLabors.ImageSharp.Image;
 
-namespace MiniApp4.API.Utilities.Visual.Concrete
+namespace MiniApp3.Service.Services
 {
-    public class ImageServerService : IImageServices
+    public class ServerSideTransactionImageProcessingService : IImageProcessingServices
     {
         private const int ThumbnailWidth = 300;
         private const int FullScreenWidth = 1000;
-        public async Task ProcessAsync(IEnumerable<ImageInputModel> images)
+        public async Task<Response<NoDataDto>> ProcessAsync(IEnumerable<ImageInputModel> images)
         {
             var tasks = images.Select(image => Task.Run(async () =>
             {
@@ -27,7 +36,15 @@ namespace MiniApp4.API.Utilities.Visual.Concrete
                 }
             })).ToList();
 
-            await Task.WhenAll(tasks);
+            try
+            {
+                await Task.WhenAll(tasks);
+            }
+            catch (Exception e)
+            {
+                return Response<NoDataDto>.Fail(e.Message, 404, true);
+            }
+            return Response<NoDataDto>.Success(200);
         }
 
         private async Task SaveImageAsync(Image image, string name, int resizeWidth)

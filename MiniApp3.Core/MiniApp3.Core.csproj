@@ -9,8 +9,11 @@
   <ItemGroup>
     <Folder Include="Common\" />
     <Folder Include="Dtos\" />
-    <Folder Include="Entities\" />
     <Folder Include="Models\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SharedLibrary\SharedLibrary.csproj" />
   </ItemGroup>
 
 </Project>

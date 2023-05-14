@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using MiniApp4.API.Common.Constants;
 using MiniApp4.Core.Dtos;
 using MiniApp4.Core.Entities;
 using MiniApp4.Core.Services;
@@ -25,7 +24,7 @@ namespace MiniApp4.API.Controllers
         [HttpPost]
         public async Task<IActionResult> SaveVideo(IFormFile video, CancellationToken cancellationToken)
         {
-            if (video.Length > Magnitude.FourMegabytes)
+            if (video.Length > 3 * 1024 * 1024)
             {
                 return ActionResultInstance(Response<NoDataDto>.Fail($"Image size can not be greater than 3 MB.", 400, true));
             }
