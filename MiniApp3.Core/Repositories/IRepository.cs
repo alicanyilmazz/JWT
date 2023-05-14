@@ -16,5 +16,8 @@ namespace MiniApp3.Core.Repositories
         Task AddAsync(TEntity entity);
         void Remove(TEntity entity);
         Task<TEntity> Update(TEntity entity);
+        public void Commit();
+        public Task CommitAsync();
+        public Task<Stream?> ReadPhotoDirectlyFromDatabase(string id, string content);
     }
 }
