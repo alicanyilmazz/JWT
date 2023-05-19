@@ -77,19 +77,18 @@ namespace MiniApp3.Data.Repositories
             await _context.SaveChangesAsync();
         }
 
-        public async Task<Stream?> ReadPhotoDirectlyFromDatabase(string id, string content)
+        public async Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content)
         {
-            Stream result = null;
             try
             {
                 var database = _context.Database;
                 var dbConnection = (SqlConnection)database.GetDbConnection();
 
-                var command = new SqlCommand($"SELECT {content} FROM ImageData WHERE Id = @id", dbConnection);
+                var command = new SqlCommand($"SELECT {content} FROM [ADVANCEPHOTODB].[dbo].[ImageData] WHERE Id = @id", dbConnection);
                 command.Parameters.Add(new SqlParameter("@id", id));
                 dbConnection.Open();
                 var reader = await command.ExecuteReaderAsync();
-
+                Stream result = null;
                 if (reader.HasRows)
                 {
                     while (reader.Read())
@@ -98,13 +97,13 @@ namespace MiniApp3.Data.Repositories
                     }
                 }
                 reader.Close();
+                return result;
             }
             catch (Exception)
             {
-                result = null;
-                throw;
+                // Log
             }
-            return result;
+            return null;
         }
     }
 }
