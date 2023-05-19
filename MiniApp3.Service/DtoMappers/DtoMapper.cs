@@ -1,4 +1,6 @@
 ﻿using AutoMapper;
+using MiniApp3.Core.Dtos;
+using MiniApp3.Core.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,9 +13,7 @@ namespace MiniApp3.Service.DtoMappers
     {
         public DtoMapper()
         {
-            //CreateMap<PhotoDto, Photo>().ReverseMap();
-            //CreateMap<DocumentDto, Document>().ReverseMap();
-            //CreateMap<VideoDto, Video>().ReverseMap();
+            CreateMap<ImageInformationDto, ImageInformation>().ReverseMap();
         }
     }
 }
