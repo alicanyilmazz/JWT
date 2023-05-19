@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <Folder Include="Common\" />
-    <Folder Include="Dtos\" />
     <Folder Include="Models\" />
   </ItemGroup>
 
