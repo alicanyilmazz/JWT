@@ -1,13 +1,10 @@
-﻿using MiniApp3.Core.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+using MiniApp3.Core.Dtos;
+using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Core.Services;
-using MiniApp3.Core.UnitOfWork;
 using SharedLibrary.Dtos;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace MiniApp3.Service.Services
 {
@@ -18,17 +15,29 @@ namespace MiniApp3.Service.Services
         {
             _repository = repository;
         }
-        public async Task<Response<Stream?>> GetThumnailPhotoAsync(string id)
-        { 
+
+        public async Task<Response<ImageInformationDto>> GetThumnailPhotoAsync(string id)
+        {
+            Stream? image = null;
             try
             {
-                await _repository.ReadPhotoDirectlyFromDatabase(id, "ThumbnailContent");
+                bool recordIsExist = _repository.Where(x => x.Id.ToString() == id).Any();
+                if (!recordIsExist)
+                {
+
+                    return Response<ImageInformationDto>.Fail("Image not found!", 404, true);
+                }
+                var result = await _repository.Where(x => x.Id.ToString() == id).FirstOrDefaultAsync();
+                image = await _repository.ReadPhotoDirectlyFromDatabase(id, "ThumbnailContent");
             }
             catch (Exception e)
             {
-                return Response<NoDataDto>.Fail(e.Message, 404, true);
+                Debug.WriteLine(e);
+                return Response<ImageInformationDto>.Fail(e.Message, 404, true);
             }
-            return Response<NoDataDto>.Success(200);
+
+            var newDto = new ImageInformationDto { Image = image };
+            return Response<ImageInformationDto>.Success(newDto, 200);
         }
     }
 }
