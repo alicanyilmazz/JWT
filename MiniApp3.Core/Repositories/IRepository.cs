@@ -20,7 +20,7 @@ namespace MiniApp3.Core.Repositories
         public void Commit();
         public Task CommitAsync();
         public Task<int> CountAsync();
-        public Task<List<object>> ReadPhotoInfoDirectlyFromDatabase();
+        public Task<List<string>> ReadPhotoInfoDirectlyFromDatabase();
         public Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content);
     }
 }

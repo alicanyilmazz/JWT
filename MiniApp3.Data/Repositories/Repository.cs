@@ -82,7 +82,7 @@ namespace MiniApp3.Data.Repositories
             return await _dbSet.CountAsync();
         }
 
-        public async Task<List<object>> ReadPhotoInfoDirectlyFromDatabase()
+        public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {
             try
             {
@@ -94,7 +94,7 @@ namespace MiniApp3.Data.Repositories
                 //command.Parameters.Add(new SqlParameter("@id", id));
                 dbConnection.Open();
                 var reader = await command.ExecuteReaderAsync();
-                var result = new List<object>();
+                var result = new List<string>();
                 if (reader.HasRows)
                 {
                     while (reader.Read())

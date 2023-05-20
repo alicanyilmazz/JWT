@@ -25,7 +25,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
             var res = new List<ImageServerServiceResponse>();
             foreach (var item in result)
             {
-                res.Add(new ImageServerServiceResponse { Path = item.ToString() });
+                res.Add(new ImageServerServiceResponse { Path = item });
             }
             return Response<IEnumerable<ImageServerServiceResponse>>.Success(res, 200);
         }
