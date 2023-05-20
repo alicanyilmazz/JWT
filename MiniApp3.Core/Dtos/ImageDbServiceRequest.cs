@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Entities
 {
-    public class ImageInputModel
+    public class ImageDbServiceRequest
     {
         public string Name { get; set; }
         public string Type { get; set; }

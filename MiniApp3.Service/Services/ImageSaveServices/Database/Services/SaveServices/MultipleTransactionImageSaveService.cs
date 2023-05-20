@@ -1,6 +1,6 @@
 ﻿using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
-using MiniApp3.Core.Services;
+using MiniApp3.Core.Services.Visual.Database;
 using MiniApp3.Core.UnitOfWork;
 using SharedLibrary.Dtos;
 using SixLabors.ImageSharp;
@@ -14,9 +14,9 @@ using System.Threading.Tasks;
 using static System.Net.Mime.MediaTypeNames;
 using Image = SixLabors.ImageSharp.Image;
 
-namespace MiniApp3.Service.Services
+namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServices
 {
-    public class DatabaseMultipleTransactionImageProcessingService : IImageProcessingServices
+    public class MultipleTransactionImageSaveService : IImageDbSaveServices
     {
         private const int ThumbnailWidth = 300;
         private const int FullScreenWidth = 1000;
@@ -24,13 +24,13 @@ namespace MiniApp3.Service.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRepository<ImageData> _repository;
 
-        public DatabaseMultipleTransactionImageProcessingService(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
+        public MultipleTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
         }
 
-        public async Task<Response<NoDataDto>> ProcessAsync(IEnumerable<ImageInputModel> images)
+        public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images)
         {
             var tasks = images.Select(image => Task.Run(async () =>
             {
@@ -54,7 +54,7 @@ namespace MiniApp3.Service.Services
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine("XXX"+ex);
+                    Debug.WriteLine("XXX" + ex);
                     throw;
                 }
             })).ToList();

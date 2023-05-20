@@ -13,17 +13,17 @@ namespace MiniApp3.API.Controllers
                 StatusCode = response.StatusCode
             };
         }
-        public IActionResult ReturnImage(Stream image)
-        {
-            var headers = this.Response.GetTypedHeaders();
-            headers.CacheControl = new Microsoft.Net.Http.Headers.CacheControlHeaderValue
-            {
-                Public = true,
-                MaxAge = TimeSpan.FromDays(1)
-            };
-            headers.Expires = new DateTimeOffset(DateTime.UtcNow.AddDays(1));
+        //public IActionResult ReturnImage(Stream image)
+        //{
+        //    var headers = this.Response.GetTypedHeaders();
+        //    headers.CacheControl = new Microsoft.Net.Http.Headers.CacheControlHeaderValue
+        //    {
+        //        Public = true,
+        //        MaxAge = TimeSpan.FromDays(1)
+        //    };
+        //    headers.Expires = new DateTimeOffset(DateTime.UtcNow.AddDays(1));
 
-            return this.File(image, "image/jpeg");
-        }
+        //    return this.File(image, "image/jpeg");
+        //}
     }
 }

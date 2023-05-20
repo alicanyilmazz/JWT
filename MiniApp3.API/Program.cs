@@ -1,11 +1,20 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 using MiniApp3.Core.Repositories;
-using MiniApp3.Core.Services;
+using MiniApp3.Core.Services.Database;
+using MiniApp3.Core.Services.Visual.Database;
+using MiniApp3.Core.Services.Visual.Server;
 using MiniApp3.Core.UnitOfWork;
 using MiniApp3.Data.Context;
 using MiniApp3.Data.Repositories;
 using MiniApp3.Data.UnitOfWork;
 using MiniApp3.Service.Services;
+using MiniApp3.Service.Services.ImageSaveServices.Database.Managers;
+using MiniApp3.Service.Services.ImageSaveServices.Database.Services.ReadServices;
+using MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServices;
+using MiniApp3.Service.Services.ImageSaveServices.Server.Managers;
+using MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServices;
+using MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServices;
 using SharedLibrary.Configuration;
 using SharedLibrary.Extensions.Authorization;
 using System.Reflection;
@@ -17,13 +26,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(x =>
+{
+    x.SwaggerDoc("v1", new OpenApiInfo { Title = "DATABASE PHOTO API", Version = "v1" });
+});
 builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>)); // CORE , DATA
 builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
-builder.Services.AddTransient<IImageProcessingManager, ImageProcessingManager>();
-builder.Services.AddTransient<IImageProcessingServices, DatabaseSingleTransactionImageProcessingService>();
-builder.Services.AddTransient<IImageReadService, ImageReadService>();
+builder.Services.AddTransient<IImageDbSaveManager, ImageDbSaveManager>();
+builder.Services.AddTransient<IImageDbSaveServices, SingleTransactionImageSaveService>();
+builder.Services.AddTransient<IImageDbReadService, ImageDbReadService>();
+builder.Services.AddTransient<IImageServerSaveManager, ImageServerSaveManager>();
+builder.Services.AddTransient<IImageServerSaveService, MultistagedTransactionImageSaveService>();
+builder.Services.AddTransient<IImageServerReadService, ImageServerReadService>();
 builder.Services.AddDbContext<AppDbContext>(x =>
 {
     x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>

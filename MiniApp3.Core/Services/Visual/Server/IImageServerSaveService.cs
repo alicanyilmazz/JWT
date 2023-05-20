@@ -6,10 +6,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Core.Services
+namespace MiniApp3.Core.Services.Visual.Server
 {
-    public interface IImageProcessingServices
+    public interface IImageServerSaveService
     {
-        public Task<Response<NoDataDto>> ProcessAsync(IEnumerable<ImageInputModel> images);
+        public Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images);
     }
 }

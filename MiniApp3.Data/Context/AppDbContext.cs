@@ -12,6 +12,7 @@ namespace MiniApp3.Data.Context
     public class AppDbContext : DbContext
     {
         public DbSet<ImageData> ImageData { get; set; }
+        public DbSet<ImageFile> ImageFile { get; set; }
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
 

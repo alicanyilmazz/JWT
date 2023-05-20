@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MiniApp3.Core.Entities;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -18,6 +19,8 @@ namespace MiniApp3.Core.Repositories
         Task<TEntity> Update(TEntity entity);
         public void Commit();
         public Task CommitAsync();
+        public Task<int> CountAsync();
+        public Task<List<object>> ReadPhotoInfoDirectlyFromDatabase();
         public Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content);
     }
 }

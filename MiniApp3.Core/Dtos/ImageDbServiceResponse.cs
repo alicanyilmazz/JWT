@@ -7,9 +7,8 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Dtos
 {
-    public class ImageInformationDto
+    public class ImageDbServiceResponse
     {
         public Stream? Image { get; set; }
-        public bool IsSuccess { get; set; }
     }
 }

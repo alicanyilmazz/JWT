@@ -7,10 +7,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Core.Services
+namespace MiniApp3.Core.Services.Visual.Database
 {
-    public interface IImageReadService
+    public interface IImageDbReadService
     {
-        public Task<Response<ImageInformationDto>> GetThumnailPhotoAsync(string id);
+        public Task<Response<ImageDbServiceResponse>> GetThumnailPhotoAsync(string id);
     }
 }

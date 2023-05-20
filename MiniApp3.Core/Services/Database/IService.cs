@@ -6,7 +6,7 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Core.Services
+namespace MiniApp3.Core.Services.Database
 {
     public interface IService<TEntity, TDto> where TEntity : class where TDto : class
     {

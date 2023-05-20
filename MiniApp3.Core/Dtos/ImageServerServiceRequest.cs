@@ -4,10 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Core.Entities
+namespace MiniApp3.Core.Dtos
 {
-    public class ImageInformation
+    public class ImageServerServiceRequest
     {
-        public string Id { get; set; }
     }
 }

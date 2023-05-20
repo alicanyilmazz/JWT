@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Data.Context;
 using System;
@@ -76,7 +77,40 @@ namespace MiniApp3.Data.Repositories
         {
             await _context.SaveChangesAsync();
         }
+        public async Task<int> CountAsync()
+        {
+            return await _dbSet.CountAsync();
+        }
 
+        public async Task<List<object>> ReadPhotoInfoDirectlyFromDatabase()
+        {
+            try
+            {
+
+                var database = _context.Database;
+                var dbConnection = (SqlConnection)database.GetDbConnection();
+
+                var command = new SqlCommand($"SELECT [Folder] + '/' + CAST([Id] AS nvarchar(36)) FROM [ADVANCEPHOTODB].[dbo].[ImageFile]", dbConnection);
+                //command.Parameters.Add(new SqlParameter("@id", id));
+                dbConnection.Open();
+                var reader = await command.ExecuteReaderAsync();
+                var result = new List<object>();
+                if (reader.HasRows)
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(reader.GetString(0));
+                    }
+                }
+                reader.Close();
+                return result;
+            }
+            catch (Exception)
+            {
+                // Log
+            }
+            return null;
+        }
         public async Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content)
         {
             try
