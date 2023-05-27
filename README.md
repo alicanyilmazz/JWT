@@ -1,4 +1,4 @@
-
+```c#
 
  public class MultistagedTransactionImageSaveService : IImageServerSaveService
     {
@@ -126,3 +126,4 @@
             public string Type { get; set; }
         }
     }
+```
