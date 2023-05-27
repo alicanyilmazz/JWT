@@ -1,7 +1,7 @@
 ```c#
 
  public class MultistagedTransactionImageSaveService : IImageServerSaveService
-    {
+ {
         private const int ThumbnailWidth = 300;
         private const int FullScreenWidth = 1000;
 
@@ -125,5 +125,5 @@
             public bool isSuccess { get; set; }
             public string Type { get; set; }
         }
-    }
+  }
 ```
