@@ -10,6 +10,6 @@ namespace MiniApp3.Core.Services.Visual.Server
 {
     public interface IImageServerSaveService
     {
-        public Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images);
+        public Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images, string directory);
     }
 }

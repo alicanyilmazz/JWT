@@ -16,7 +16,7 @@ using Image = SixLabors.ImageSharp.Image;
 
 namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServices
 {
-    public class SingleTransactionImageSaveService : IImageDbSaveServices
+    public class ImageDbSaveServiceDefault : IImageDbSaveServices
     {
         private const int ThumbnailWidth = 300;
         private const int FullScreenWidth = 1000;
@@ -24,7 +24,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRepository<ImageData> _repository;
 
-        public SingleTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
+        public ImageDbSaveServiceDefault(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;

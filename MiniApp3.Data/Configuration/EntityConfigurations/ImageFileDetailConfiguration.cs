@@ -7,13 +7,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Data.Configuration
+namespace MiniApp3.Data.Configuration.EntityConfigurations
 {
-    public class ImageFileConfiguration : IEntityTypeConfiguration<ImageFile>
+    public class ImageFileDetailConfiguration : IEntityTypeConfiguration<ImageFileDetail>
     {
-        public void Configure(EntityTypeBuilder<ImageFile> builder)
+        public void Configure(EntityTypeBuilder<ImageFileDetail> builder)
         {
-            
+            builder.HasKey(x => x.Id);
         }
     }
 }

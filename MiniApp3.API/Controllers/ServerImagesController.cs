@@ -35,7 +35,7 @@ namespace MiniApp3.API.Controllers
                 Name = x.FileName,
                 Type = x.ContentType,
                 Content = x.OpenReadStream()
-            }));
+            }),Directory.GetCurrentDirectory());
             return ActionResultInstance(result);
         }
 

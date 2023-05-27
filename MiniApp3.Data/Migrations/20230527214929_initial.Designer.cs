@@ -12,8 +12,8 @@ using MiniApp3.Data.Context;
 namespace MiniApp3.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20230519234801_ImageFile")]
-    partial class ImageFile
+    [Migration("20230527214929_initial")]
+    partial class initial
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
@@ -23,6 +23,31 @@ namespace MiniApp3.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder, 1L, 1);
+
+            modelBuilder.Entity("MiniApp3.Core.Dtos.StoredProcedureDto.ImageFileInformation", b =>
+                {
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Folder")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.ToTable("ImageFileInformation");
+                });
+
+            modelBuilder.Entity("MiniApp3.Core.Dtos.StoredProcedureDto.ServerImagesInformation", b =>
+                {
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.ToTable("ServerImagesInformation");
+                });
 
             modelBuilder.Entity("MiniApp3.Core.Entities.ImageData", b =>
                 {
@@ -57,17 +82,46 @@ namespace MiniApp3.Data.Migrations
 
             modelBuilder.Entity("MiniApp3.Core.Entities.ImageFile", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
+
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Folder")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.ToTable("ImageFile");
+                });
+
+            modelBuilder.Entity("MiniApp3.Core.Entities.ImageFileDetail", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
+
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ImageFileDetail");
                 });
 #pragma warning restore 612, 618
         }

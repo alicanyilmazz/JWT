@@ -1,4 +1,5 @@
-﻿using MiniApp3.Core.Entities;
+﻿using MiniApp3.Core.Dtos.StoredProcedureDto;
+using MiniApp3.Core.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,7 +21,10 @@ namespace MiniApp3.Core.Repositories
         public void Commit();
         public Task CommitAsync();
         public Task<int> CountAsync();
+        public Task<List<TEntity>> ReadPhotoInformation();
         public Task<List<string>> ReadPhotoInfoDirectlyFromDatabase();
         public Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content);
+        public Task SaveImageImageFile(ImageFile image);
+        public Task SaveImageImageFileDetail(ImageFileDetail imageFileDetails);
     }
 }

@@ -34,11 +34,11 @@ builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>)); // C
 builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
 builder.Services.AddTransient<IImageDbSaveManager, ImageDbSaveManager>();
-builder.Services.AddTransient<IImageDbSaveServices, SingleTransactionImageSaveService>();
+builder.Services.AddTransient<IImageDbSaveServices, ImageDbSaveServiceDefault>();
 builder.Services.AddTransient<IImageDbReadService, ImageDbReadService>();
 builder.Services.AddTransient<IImageServerSaveManager, ImageServerSaveManager>();
 builder.Services.AddTransient<IImageServerSaveService, MultistagedTransactionImageSaveService>();
-builder.Services.AddTransient<IImageServerReadService, ImageServerReadService>();
+builder.Services.AddTransient<IImageServerReadService, ImageServerReadServiceDefault>();
 builder.Services.AddDbContext<AppDbContext>(x =>
 {
     x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>

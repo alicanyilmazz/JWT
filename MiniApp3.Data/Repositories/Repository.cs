@@ -1,15 +1,20 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Data.Context;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
+using ImageFile = MiniApp3.Core.Entities.ImageFile;
+using ImageFileDetail = MiniApp3.Core.Entities.ImageFileDetail;
 
 namespace MiniApp3.Data.Repositories
 {
@@ -82,11 +87,28 @@ namespace MiniApp3.Data.Repositories
             return await _dbSet.CountAsync();
         }
 
+        public async Task<List<TEntity>> ReadPhotoInformation()
+        {
+            return await _dbSet.FromSqlRaw("EXEC GET_ALL_IMAGES").ToListAsync();
+        }
+
+        public async Task SaveImageImageFile(ImageFile image)
+        {
+            var ImageId = new SqlParameter("ImageId", image.ImageId);
+            var Folder = new SqlParameter("Folder", image.Folder);
+            var Extension = new SqlParameter("Extension", image.Extension);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_INSERT] @ImageId={ImageId}, @Folder={Folder}, @Extension={Extension}");
+        }
+        public async Task SaveImageImageFileDetail(ImageFileDetail imageFileDetails)
+        {
+            var ImageId = new SqlParameter("ImageId", imageFileDetails.ImageId);
+            var Type = new SqlParameter("Type", imageFileDetails.Type);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_DETAIL_INSERT] @ImageId={ImageId}, @Type={Type}");
+        }
         public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {
             try
             {
-
                 var database = _context.Database;
                 var dbConnection = (SqlConnection)database.GetDbConnection();
 

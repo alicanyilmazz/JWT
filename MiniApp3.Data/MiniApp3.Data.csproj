@@ -23,4 +23,9 @@
     <ProjectReference Include="..\MiniApp3.Core\MiniApp3.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Configuration\StoredProcedureConfiguration\Delete\" />
+    <Folder Include="Configuration\StoredProcedureConfiguration\Update\" />
+  </ItemGroup>
+
 </Project>
