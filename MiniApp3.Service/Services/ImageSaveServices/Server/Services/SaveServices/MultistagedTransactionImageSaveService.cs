@@ -1,4 +1,5 @@
-﻿using MiniApp3.Core.Dtos.StoredProcedureDto;
+﻿using MiniApp3.Core.Common.Constants;
+using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Core.Services;
@@ -25,16 +26,19 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly IRepository<ImageFile> _repository;
-        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageFile> repository)
+        private readonly IImageQualityRepository _qualityRepository;
+        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageFile> repository, IImageQualityRepository qualityRepository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
+            _qualityRepository = qualityRepository;
         }
         public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images, string directory)
         {
             var imageStorage = new ConcurrentDictionary<string, ImageFile>();
             var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
             var totalImages = await _repository.CountAsync();
+            var imageQualityConfigs = await _qualityRepository.GetImageQualityConfigs();
             var tasks = images.Select(image => Task.Run(async () =>
             {
                 try
@@ -52,30 +56,33 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
                         Directory.CreateDirectory(storagePath);
                     }
 
-                    var original = new ImageResult(image: imageResult, name: $"Original_{name}", path: storagePath, resizeWidth: imageResult.Width);
-                    var fullscreen = new ImageResult(image: imageResult, name: $"FullScreen_{name}", path: storagePath, resizeWidth: FullScreenWidth);
-                    var thumbnail = new ImageResult(image: imageResult, name: $"Thumbnail_{name}", path: storagePath, resizeWidth: ThumbnailWidth);
-
-                    List<Task<string>> task = new List<Task<string>>
+                    List<Task> tasks = new List<Task>();
+                    if (imageQualityConfigs.Count > 0)
                     {
-                        SaveImageAsync(original),
-                        SaveImageAsync(fullscreen),
-                        SaveImageAsync(thumbnail)
-                    };
-
-                    await Task.WhenAll(task);
-                    foreach (var item in task)
-                    {
-                        if (item.IsCompletedSuccessfully)
+                        foreach (var config in imageQualityConfigs)
                         {
-                            imageDetailStorage.TryAdd(item.Result, new ImageFileDetail()
+                            if (config.IsOriginal)
                             {
-                                ImageId = id,
-                                Type = item.Result,
-                            });
+                                tasks.Add(SaveImageAsync(new ImageProcessInput(image: imageResult, name: $"{config.Name}_{name}", path: storagePath, resizeWidth: imageResult.Width, quality: config.Rate)));
+                            }
+                            else
+                            {
+                                tasks.Add(SaveImageAsync(new ImageProcessInput(image: imageResult, name: $"{config.Name}_{name}", path: storagePath, resizeWidth: config.ResizeWidth, quality: config.Rate)));
+                            }
                         }
                     }
 
+                    await Task.WhenAll(tasks);
+                    foreach (var config in imageQualityConfigs)
+                    {
+                        imageDetailStorage.TryAdd(config.Name, new ImageFileDetail()
+                        {
+                            ImageId = id,
+                            Type = config.Name,
+                            QualityRate = $"{config.Rate}%"
+                        });
+                    }
+ 
                     imageStorage.TryAdd(image.Name, new ImageFile()
                     {
                         ImageId = id,
@@ -95,11 +102,11 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
                 await Task.WhenAll(tasks);
                 foreach (var image in imageStorage.Values)
                 {
-                    //await _repository.SaveImagesServerData(image);
+                    await _repository.SaveImageImageFile(image);
                 }
                 foreach (var image in imageDetailStorage.Values)
                 {
-                    //await _repository.SaveImagesServerData(image);
+                    await _repository.SaveImageImageFileDetail(image);
                 }
             }
             catch (Exception e)
@@ -109,44 +116,45 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
             return Response<NoDataDto>.Success(200);
         }
 
-        private async Task<string> SaveImageAsync(ImageResult imageResult)
+        private async Task SaveImageAsync(ImageProcessInput input)
         {
             try
             {
-                var width = imageResult.Image.Width;
-                var height = imageResult.Image.Height;
-                if (width > imageResult.ResizeWidth)
+                var width = input.Image.Width;
+                var height = input.Image.Height;
+                if (width > input.ResizeWidth)
                 {
-                    height = (int)(double)(imageResult.ResizeWidth / width * height);
-                    width = imageResult.ResizeWidth;
+                    height = (int)(double)(input.ResizeWidth / width * height);
+                    width = input.ResizeWidth;
                 }
-                imageResult.Image.Mutate(x => x.Resize(new Size(width, height)));
-                imageResult.Image.Metadata.ExifProfile = null;
-                await imageResult.Image.SaveAsJpegAsync($"{imageResult.Path}/{imageResult.Name}", new JpegEncoder
+                input.Image.Mutate(x => x.Resize(new Size(width, height)));
+                input.Image.Metadata.ExifProfile = null;
+                await input.Image.SaveAsJpegAsync($"{input.Path}/{input.Name}", new JpegEncoder
                 {
-                    Quality = 75
+                    Quality = input.Quality,
                 });
             }
             catch (Exception)
             {
-                // Log
                 throw;
             }
-            return imageResult.Name;
         }
 
-        class ImageResult
+        class ImageProcessInput
         {
             public Image Image { get; set; }
             public string Name { get; set; }
             public string Path { get; set; }
             public int ResizeWidth { get; set; }
-            public ImageResult(Image image, string name, string path, int resizeWidth)
+            public string Type { get; set; }
+            public int Quality { get; set; }
+            public ImageProcessInput(Image image, string name, string path, int resizeWidth, int quality)
             {
                 Image = image;
                 Name = name;
                 Path = path;
                 ResizeWidth = resizeWidth;
+                Quality = quality;
             }
         }
     }
