@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MiniApp3.Data.Context;
 
@@ -11,9 +12,10 @@ using MiniApp3.Data.Context;
 namespace MiniApp3.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230528174731_ImageQualityAdd")]
+    partial class ImageQualityAdd
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -36,24 +38,6 @@ namespace MiniApp3.Data.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.ToTable("ImageFileInformation");
-                });
-
-            modelBuilder.Entity("MiniApp3.Core.Dtos.StoredProcedureDto.ImageQualityResult", b =>
-                {
-                    b.Property<bool>("IsOriginal")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Rate")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ResizeWidth")
-                        .HasColumnType("int");
-
-                    b.ToTable("ImageQualityResult");
                 });
 
             modelBuilder.Entity("MiniApp3.Core.Dtos.StoredProcedureDto.ServerImagesInformation", b =>
@@ -152,20 +136,15 @@ namespace MiniApp3.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<bool>("IsOriginal")
-                        .HasColumnType("bit");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<int>("Rate")
-                        .HasMaxLength(100)
-                        .HasColumnType("int");
-
-                    b.Property<int>("ResizeWidth")
-                        .HasColumnType("int");
+                    b.Property<string>("Rate")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
 
                     b.HasKey("Id");
 
