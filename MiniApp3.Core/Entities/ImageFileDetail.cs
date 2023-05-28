@@ -11,5 +11,6 @@ namespace MiniApp3.Core.Entities
         public int Id { get; set; }
         public Guid ImageId { get; set; }
         public string Type { get; set; }
+        public string QualityRate { get; set; }
     }
 }
