@@ -16,7 +16,7 @@ using static System.Net.Mime.MediaTypeNames;
 using ImageFile = MiniApp3.Core.Entities.ImageFile;
 using ImageFileDetail = MiniApp3.Core.Entities.ImageFileDetail;
 
-namespace MiniApp3.Data.Repositories
+namespace MiniApp3.Data.Repositories.GenericRepositories
 {
     public class Repository<TEntity> : IRepository<TEntity> where TEntity : class
     {
@@ -91,7 +91,6 @@ namespace MiniApp3.Data.Repositories
         {
             return await _dbSet.FromSqlRaw("EXEC GET_ALL_IMAGES").ToListAsync();
         }
-
         public async Task SaveImageImageFile(ImageFile image)
         {
             var ImageId = new SqlParameter("ImageId", image.ImageId);
@@ -103,7 +102,8 @@ namespace MiniApp3.Data.Repositories
         {
             var ImageId = new SqlParameter("ImageId", imageFileDetails.ImageId);
             var Type = new SqlParameter("Type", imageFileDetails.Type);
-            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_DETAIL_INSERT] @ImageId={ImageId}, @Type={Type}");
+            var QualityRate = new SqlParameter("QualityRate", imageFileDetails.QualityRate);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_DETAIL_INSERT] @ImageId={ImageId}, @Type={Type}, @QualityRate={QualityRate}");
         }
         public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {
