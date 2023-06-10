@@ -22,9 +22,6 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
 {
     public class MultistagedTransactionImageSaveService : IImageServerSaveService
     {
-        private const int ThumbnailWidth = 300;
-        private const int FullScreenWidth = 1000;
-
         private readonly IUnitOfWork _unitOfWork;
         private readonly IEntityRepository<ImageFile> _repository;
         private readonly IStoredProcedureCommandRepository _storedProcedureCommandRepository;
@@ -40,7 +37,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
         {
             var imageStorage = new ConcurrentDictionary<string, ImageFile>();
             var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
-            var totalImages = await _repository.CountAsync();
+            var totalImages = await _storedProcedureQueryRepository.GetNumberOfRecord();
             var imageQualityConfigs = await _storedProcedureQueryRepository.GetImageQualityConfigs();
             var tasks = images.Select(image => Task.Run(async () =>
             {

@@ -24,7 +24,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
             IEnumerable<ImageServerServiceResponse> entities;
             try
             {
-                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _repository.ReadPhotoInformation());
+                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(null);
             }
             catch (Exception e)
             {

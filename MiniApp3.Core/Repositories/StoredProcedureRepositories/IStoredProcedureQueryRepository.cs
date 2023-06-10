@@ -11,5 +11,12 @@ namespace MiniApp3.Core.Repositories.StoredProcedureRepositories
     {
         public Task<List<ServerImagesInformation>> ReadPhotoInformation();
         public Task<List<ImageQualityResponse>> GetImageQualityConfigs();
+
+        /// ExecuteSqlInterpolatedAsync yöntemi, çıktı parametrelerini doğrudan desteklemez. Bu nedenle, çıktı parametresi kullanırken ExecuteSqlRawAsync yöntemini kullanmanız gerekmektedir.
+        /// <summary>
+        /// This methods returns number of ImageFile record.
+        /// </summary>
+        /// <returns>NumberOfImageFile</returns>
+        public Task<int> GetNumberOfRecord();
     }
 }
