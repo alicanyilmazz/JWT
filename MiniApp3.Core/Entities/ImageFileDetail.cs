@@ -6,11 +6,11 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Entities
 {
-    public class ImageFile
+    public class ImageFileDetail
     {
         public int Id { get; set; }
         public Guid ImageId { get; set; }
-        public string Folder { get; set; }
-        public string Extension { get; set; }
+        public string Type { get; set; }
+        public string QualityRate { get; set; }
     }
 }

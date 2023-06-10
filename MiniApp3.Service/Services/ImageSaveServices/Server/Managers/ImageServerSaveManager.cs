@@ -11,9 +11,9 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Managers
 {
     public class ImageServerSaveManager : IImageServerSaveManager
     {
-        public async Task<Response<NoDataDto>> Save(IImageServerSaveService services, IEnumerable<ImageDbServiceRequest> images)
+        public async Task<Response<NoDataDto>> Save(IImageServerSaveService services, IEnumerable<ImageDbServiceRequest> images , string directory)
         {
-            return await services.SaveAsync(images);
+            return await services.SaveAsync(images, directory);
         }
     }
 }

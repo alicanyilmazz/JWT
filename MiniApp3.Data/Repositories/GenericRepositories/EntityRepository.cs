@@ -1,25 +1,30 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Data.Context;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
+using ImageFile = MiniApp3.Core.Entities.ImageFile;
+using ImageFileDetail = MiniApp3.Core.Entities.ImageFileDetail;
 
-namespace MiniApp3.Data.Repositories
+namespace MiniApp3.Data.Repositories.GenericRepositories
 {
-    public class Repository<TEntity> : IRepository<TEntity> where TEntity : class
+    public class EntityRepository<TEntity> : IEntityRepository<TEntity> where TEntity : class
     {
         private readonly DbContext _context;
         private readonly DbSet<TEntity> _dbSet;
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        public Repository(IServiceScopeFactory serviceScopeFactory)
+        public EntityRepository(IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _context = _serviceScopeFactory.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
@@ -81,12 +86,10 @@ namespace MiniApp3.Data.Repositories
         {
             return await _dbSet.CountAsync();
         }
-
         public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {
             try
             {
-
                 var database = _context.Database;
                 var dbConnection = (SqlConnection)database.GetDbConnection();
 

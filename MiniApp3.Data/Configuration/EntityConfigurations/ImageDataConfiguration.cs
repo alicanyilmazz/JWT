@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MiniApp3.Data.Configuration
+namespace MiniApp3.Data.Configuration.EntityConfigurations
 {
     internal class ImageDataConfiguration : IEntityTypeConfiguration<ImageData>
     {

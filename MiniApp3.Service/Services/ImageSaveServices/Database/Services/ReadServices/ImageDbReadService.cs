@@ -10,8 +10,8 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.ReadServ
 {
     public class ImageDbReadService : IImageDbReadService
     {
-        private readonly IRepository<ImageData> _repository;
-        public ImageDbReadService(IRepository<ImageData> repository)
+        private readonly IEntityRepository<ImageData> _repository;
+        public ImageDbReadService(IEntityRepository<ImageData> repository)
         {
             _repository = repository;
         }

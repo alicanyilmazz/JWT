@@ -1,13 +1,13 @@
-﻿using MiniApp3.Core.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
 using MiniApp3.Core.Services.Visual.Database;
 using MiniApp3.Core.UnitOfWork;
 using SharedLibrary.Dtos;
-using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,22 +16,24 @@ using Image = SixLabors.ImageSharp.Image;
 
 namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServices
 {
-    public class MultipleTransactionImageSaveService : IImageDbSaveServices
+    public class ImageDbSaveServiceDefault : IImageDbSaveServices
     {
         private const int ThumbnailWidth = 300;
         private const int FullScreenWidth = 1000;
 
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ImageData> _repository;
+        private readonly IEntityRepository<ImageData> _repository;
 
-        public MultipleTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
+        public ImageDbSaveServiceDefault(IUnitOfWork unitOfWork, IEntityRepository<ImageData> repository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
         }
-
         public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images)
         {
+            // If you use this way you do not have to use IServiceScopeFactory
+            var imageStorage = new ConcurrentDictionary<string, ImageData>();
+            //var imageStorage = new ConcurrentBag<ImageData>();
             var tasks = images.Select(image => Task.Run(async () =>
             {
                 try
@@ -41,7 +43,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
                     var fullscreen = await SaveImageAsync(imageResult, FullScreenWidth);
                     var thumnail = await SaveImageAsync(imageResult, ThumbnailWidth);
 
-                    await _repository.AddAsync(new ImageData
+                    imageStorage.TryAdd(image.Name, new ImageData
                     {
                         OriginalFileName = image.Name,
                         OriginalType = image.Type,
@@ -49,12 +51,10 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
                         ThumbnailContent = thumnail,
                         FullScreenContent = fullscreen
                     });
-
-                    //await _repository.CommitAsync();
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Debug.WriteLine("XXX" + ex);
+                    // Log
                     throw;
                 }
             })).ToList();
@@ -62,6 +62,11 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
             try
             {
                 await Task.WhenAll(tasks);
+                foreach (var image in imageStorage)
+                {
+                    await _repository.AddAsync(image.Value);
+                }
+                await _repository.CommitAsync();
             }
             catch (Exception e)
             {
@@ -87,5 +92,6 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
             });
             return memoryStream.ToArray();
         }
+
     }
 }

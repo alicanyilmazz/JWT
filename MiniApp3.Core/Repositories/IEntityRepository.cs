@@ -1,4 +1,5 @@
-﻿using MiniApp3.Core.Entities;
+﻿using MiniApp3.Core.Dtos.StoredProcedureDto;
+using MiniApp3.Core.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Repositories
 {
-    public interface IRepository<TEntity> where TEntity : class
+    public interface IEntityRepository<TEntity> where TEntity : class
     {
         Task<TEntity> GetByIdAsync(int id);
         IQueryable<TEntity> GetAll();

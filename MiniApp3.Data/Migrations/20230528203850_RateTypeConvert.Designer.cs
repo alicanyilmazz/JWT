@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MiniApp3.Data.Context;
 
@@ -11,9 +12,10 @@ using MiniApp3.Data.Context;
 namespace MiniApp3.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20230528203850_RateTypeConvert")]
+    partial class RateTypeConvert
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -161,7 +163,7 @@ namespace MiniApp3.Data.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("Rate")
-                        .HasMaxLength(100)
+                        .HasMaxLength(5)
                         .HasColumnType("int");
 
                     b.Property<int>("ResizeWidth")

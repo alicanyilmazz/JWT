@@ -1,8 +1,12 @@
-﻿using MiniApp3.Core.Entities;
+﻿using MiniApp3.Core.Common.Constants;
+using MiniApp3.Core.Dtos.StoredProcedureDto;
+using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Repositories.StoredProcedureRepositories;
 using MiniApp3.Core.Services;
 using MiniApp3.Core.Services.Visual.Server;
 using MiniApp3.Core.UnitOfWork;
+using MiniApp3.Data.Repositories.StoredProcedureRepositories;
 using SharedLibrary.Dtos;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using System;
@@ -22,16 +26,22 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
         private const int FullScreenWidth = 1000;
 
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ImageFile> _repository;
-        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageFile> repository)
+        private readonly IEntityRepository<ImageFile> _repository;
+        private readonly IStoredProcedureCommandRepository _storedProcedureCommandRepository;
+        private readonly IStoredProcedureQueryRepository _storedProcedureQueryRepository;
+        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IEntityRepository<ImageFile> repository, IStoredProcedureCommandRepository storedProcedureCommandRepository, IStoredProcedureQueryRepository storedProcedureQueryRepository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
+            _storedProcedureCommandRepository= storedProcedureCommandRepository;
+            _storedProcedureQueryRepository= storedProcedureQueryRepository;
         }
-        public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images)
+        public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images, string directory)
         {
             var imageStorage = new ConcurrentDictionary<string, ImageFile>();
+            var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
             var totalImages = await _repository.CountAsync();
+            var imageQualityConfigs = await _storedProcedureQueryRepository.GetImageQualityConfigs();
             var tasks = images.Select(image => Task.Run(async () =>
             {
                 try
@@ -42,21 +52,45 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
                     var path = $"/images/{totalImages % 1000}/";
                     var name = $"{id}.jpg";
 
-                    var storagePath = Path.Combine(Directory.GetCurrentDirectory(), $"wwwroot{path}".Replace("/", "\\"));
+                    var storagePath = Path.Combine(directory, $"wwwroot{path}".Replace("/", "\\"));
 
                     if (!Directory.Exists(storagePath))
                     {
                         Directory.CreateDirectory(storagePath);
                     }
 
-                    await SaveImageAsync(imageResult, $"Original_{image.Name}", storagePath, imageResult.Width);
-                    await SaveImageAsync(imageResult, $"FullScreen_{image.Name}", storagePath, FullScreenWidth);
-                    await SaveImageAsync(imageResult, $"Thumbnail_{image.Name}", storagePath, ThumbnailWidth);
+                    List<Task> tasks = new List<Task>();
+                    if (imageQualityConfigs.Count > 0)
+                    {
+                        foreach (var config in imageQualityConfigs)
+                        {
+                            if (config.IsOriginal)
+                            {
+                                tasks.Add(SaveImageAsync(new ImageProcessInput(image: imageResult, name: $"{config.Name}_{name}", path: storagePath, resizeWidth: imageResult.Width, quality: config.Rate)));
+                            }
+                            else
+                            {
+                                tasks.Add(SaveImageAsync(new ImageProcessInput(image: imageResult, name: $"{config.Name}_{name}", path: storagePath, resizeWidth: config.ResizeWidth, quality: config.Rate)));
+                            }
+                        }
+                    }
 
+                    await Task.WhenAll(tasks);
+                    foreach (var config in imageQualityConfigs)
+                    {
+                        imageDetailStorage.TryAdd(config.Name, new ImageFileDetail()
+                        {
+                            ImageId = id,
+                            Type = config.Name,
+                            QualityRate = $"{config.Rate}%"
+                        });
+                    }
+ 
                     imageStorage.TryAdd(image.Name, new ImageFile()
                     {
-                        Id = id,
-                        Folder= path
+                        ImageId = id,
+                        Folder = path,
+                        Extension = "jpg"
                     });
                 }
                 catch (Exception)
@@ -69,11 +103,14 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
             try
             {
                 await Task.WhenAll(tasks);
-                foreach (var image in imageStorage)
+                foreach (var image in imageStorage.Values)
                 {
-                    await _repository.AddAsync(image.Value);
+                    await _storedProcedureCommandRepository.SaveImageImageFile(image);
                 }
-                await _repository.CommitAsync();
+                foreach (var image in imageDetailStorage.Values)
+                {
+                    await _storedProcedureCommandRepository.SaveImageImageFileDetail(image);
+                }
             }
             catch (Exception e)
             {
@@ -82,21 +119,46 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
             return Response<NoDataDto>.Success(200);
         }
 
-        private async Task SaveImageAsync(Image image, string name, string path, int resizeWidth)
+        private async Task SaveImageAsync(ImageProcessInput input)
         {
-            var width = image.Width;
-            var height = image.Height;
-            if (width > resizeWidth)
+            try
             {
-                height = (int)(double)(resizeWidth / width * height);
-                width = resizeWidth;
+                var width = input.Image.Width;
+                var height = input.Image.Height;
+                if (width > input.ResizeWidth)
+                {
+                    height = (int)(double)(input.ResizeWidth / width * height);
+                    width = input.ResizeWidth;
+                }
+                input.Image.Mutate(x => x.Resize(new Size(width, height)));
+                input.Image.Metadata.ExifProfile = null;
+                await input.Image.SaveAsJpegAsync($"{input.Path}/{input.Name}", new JpegEncoder
+                {
+                    Quality = input.Quality,
+                });
             }
-            image.Mutate(x => x.Resize(new Size(width, height)));
-            image.Metadata.ExifProfile = null;
-            await image.SaveAsJpegAsync($"{path}/{name}", new JpegEncoder
+            catch (Exception)
             {
-                Quality = 75
-            });
+                throw;
+            }
+        }
+
+        class ImageProcessInput
+        {
+            public Image Image { get; set; }
+            public string Name { get; set; }
+            public string Path { get; set; }
+            public int ResizeWidth { get; set; }
+            public string Type { get; set; }
+            public int Quality { get; set; }
+            public ImageProcessInput(Image image, string name, string path, int resizeWidth, int quality)
+            {
+                Image = image;
+                Name = name;
+                Path = path;
+                ResizeWidth = resizeWidth;
+                Quality = quality;
+            }
         }
     }
 }
