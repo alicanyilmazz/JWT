@@ -18,7 +18,7 @@ namespace MiniApp3.Data.Context
         public DbSet<ImageQuality> ImageQuality { get; set; }
 
         //Comment For Migration
-        public DbSet<ImageQualityResult> ImageQualityResult { get; set; }
+        public DbSet<ImageQualityResponse> ImageQualityResult { get; set; }
         public DbSet<ServerImagesInformation> ServerImagesInformation { get; set; }
         public DbSet<ImageFileInformation> ImageFileInformation { get; set; }
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)

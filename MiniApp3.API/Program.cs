@@ -1,13 +1,14 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Repositories.StoredProcedureRepositories;
 using MiniApp3.Core.Services.Database;
 using MiniApp3.Core.Services.Visual.Database;
 using MiniApp3.Core.Services.Visual.Server;
 using MiniApp3.Core.UnitOfWork;
 using MiniApp3.Data.Context;
 using MiniApp3.Data.Repositories.GenericRepositories;
-using MiniApp3.Data.Repositories.Repositories;
+using MiniApp3.Data.Repositories.StoredProcedureRepositories.Query;
 using MiniApp3.Data.UnitOfWork;
 using MiniApp3.Service.Services;
 using MiniApp3.Service.Services.ImageSaveServices.Database.Managers;
@@ -31,8 +32,8 @@ builder.Services.AddSwaggerGen(x =>
 {
     x.SwaggerDoc("v1", new OpenApiInfo { Title = "DATABASE PHOTO API", Version = "v1" });
 });
-builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>)); // CORE , DATA
-builder.Services.AddTransient(typeof(IImageQualityRepository), typeof(ImageQualityRepository)); // CORE , DATA
+builder.Services.AddTransient(typeof(IEntityRepository<>), typeof(EntityRepository<>)); // CORE , DATA
+//builder.Services.AddTransient(typeof(IImageQualityStoredProcedureRepository), typeof(ImageQualityStoredProcedureRepository)); // CORE , DATA
 builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
 builder.Services.AddTransient<IImageDbSaveManager, ImageDbSaveManager>();

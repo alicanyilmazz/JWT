@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Repositories
 {
-    public interface IRepository<TEntity> where TEntity : class
+    public interface IEntityRepository<TEntity> where TEntity : class
     {
         Task<TEntity> GetByIdAsync(int id);
         IQueryable<TEntity> GetAll();
@@ -21,10 +21,7 @@ namespace MiniApp3.Core.Repositories
         public void Commit();
         public Task CommitAsync();
         public Task<int> CountAsync();
-        public Task<List<TEntity>> ReadPhotoInformation();
         public Task<List<string>> ReadPhotoInfoDirectlyFromDatabase();
         public Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content);
-        public Task SaveImageImageFile(ImageFile image);
-        public Task SaveImageImageFileDetail(ImageFileDetail imageFileDetails);
     }
 }

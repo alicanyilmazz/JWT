@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Data.Configuration.EntityConfigurations
 {
-    internal class ImageQualityResultConfiguration : IEntityTypeConfiguration<ImageQualityResult>
+    internal class ImageQualityResultConfiguration : IEntityTypeConfiguration<ImageQualityResponse>
     {
-        public void Configure(EntityTypeBuilder<ImageQualityResult> builder)
+        public void Configure(EntityTypeBuilder<ImageQualityResponse> builder)
         {
             builder.HasNoKey();
         }

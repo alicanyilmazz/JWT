@@ -22,9 +22,9 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.SaveServ
         private const int FullScreenWidth = 1000;
 
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ImageData> _repository;
+        private readonly IEntityRepository<ImageData> _repository;
 
-        public ImageDbSaveServiceDefault(IUnitOfWork unitOfWork, IRepository<ImageData> repository)
+        public ImageDbSaveServiceDefault(IUnitOfWork unitOfWork, IEntityRepository<ImageData> repository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;

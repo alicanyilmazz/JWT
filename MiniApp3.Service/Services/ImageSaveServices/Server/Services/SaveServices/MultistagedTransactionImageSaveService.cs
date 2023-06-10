@@ -2,6 +2,7 @@
 using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Repositories.StoredProcedureRepositories;
 using MiniApp3.Core.Services;
 using MiniApp3.Core.Services.Visual.Server;
 using MiniApp3.Core.UnitOfWork;
@@ -25,20 +26,22 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
         private const int FullScreenWidth = 1000;
 
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ImageFile> _repository;
-        private readonly IImageQualityRepository _qualityRepository;
-        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageFile> repository, IImageQualityRepository qualityRepository)
+        private readonly IEntityRepository<ImageFile> _repository;
+        private readonly IStoredProcedureCommandRepository _storedProcedureCommandRepository;
+        private readonly IStoredProcedureQueryRepository _storedProcedureQueryRepository;
+        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IEntityRepository<ImageFile> repository, IStoredProcedureCommandRepository storedProcedureCommandRepository, IStoredProcedureQueryRepository storedProcedureQueryRepository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
-            _qualityRepository = qualityRepository;
+            _storedProcedureCommandRepository= storedProcedureCommandRepository;
+            _storedProcedureQueryRepository= storedProcedureQueryRepository;
         }
         public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images, string directory)
         {
             var imageStorage = new ConcurrentDictionary<string, ImageFile>();
             var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
             var totalImages = await _repository.CountAsync();
-            var imageQualityConfigs = await _qualityRepository.GetImageQualityConfigs();
+            var imageQualityConfigs = await _storedProcedureQueryRepository.GetImageQualityConfigs();
             var tasks = images.Select(image => Task.Run(async () =>
             {
                 try
@@ -102,11 +105,11 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
                 await Task.WhenAll(tasks);
                 foreach (var image in imageStorage.Values)
                 {
-                    await _repository.SaveImageImageFile(image);
+                    await _storedProcedureCommandRepository.SaveImageImageFile(image);
                 }
                 foreach (var image in imageDetailStorage.Values)
                 {
-                    await _repository.SaveImageImageFileDetail(image);
+                    await _storedProcedureCommandRepository.SaveImageImageFileDetail(image);
                 }
             }
             catch (Exception e)

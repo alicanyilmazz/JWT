@@ -13,8 +13,8 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
 {
     public class ImageServerReadService : IImageServerReadService
     {
-        private readonly IRepository<ImageFile> _repository;
-        public ImageServerReadService(IRepository<ImageFile> repository)
+        private readonly IEntityRepository<ImageFile> _repository;
+        public ImageServerReadService(IEntityRepository<ImageFile> repository)
         {
             _repository = repository;
         }

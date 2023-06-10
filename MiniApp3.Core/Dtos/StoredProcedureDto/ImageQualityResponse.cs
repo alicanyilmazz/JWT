@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Core.Dtos.StoredProcedureDto
 {
-    public class ImageQualityResult
+    public class ImageQualityResponse
     {
         public string Name { get; set; }
         public int Rate { get; set; }

@@ -18,13 +18,13 @@ using ImageFileDetail = MiniApp3.Core.Entities.ImageFileDetail;
 
 namespace MiniApp3.Data.Repositories.GenericRepositories
 {
-    public class Repository<TEntity> : IRepository<TEntity> where TEntity : class
+    public class EntityRepository<TEntity> : IEntityRepository<TEntity> where TEntity : class
     {
         private readonly DbContext _context;
         private readonly DbSet<TEntity> _dbSet;
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        public Repository(IServiceScopeFactory serviceScopeFactory)
+        public EntityRepository(IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _context = _serviceScopeFactory.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
@@ -85,25 +85,6 @@ namespace MiniApp3.Data.Repositories.GenericRepositories
         public async Task<int> CountAsync()
         {
             return await _dbSet.CountAsync();
-        }
-
-        public async Task<List<TEntity>> ReadPhotoInformation()
-        {
-            return await _dbSet.FromSqlRaw("EXEC GET_ALL_IMAGES").ToListAsync();
-        }
-        public async Task SaveImageImageFile(ImageFile image)
-        {
-            var ImageId = new SqlParameter("ImageId", image.ImageId);
-            var Folder = new SqlParameter("Folder", image.Folder);
-            var Extension = new SqlParameter("Extension", image.Extension);
-            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_INSERT] @ImageId={ImageId}, @Folder={Folder}, @Extension={Extension}");
-        }
-        public async Task SaveImageImageFileDetail(ImageFileDetail imageFileDetails)
-        {
-            var ImageId = new SqlParameter("ImageId", imageFileDetails.ImageId);
-            var Type = new SqlParameter("Type", imageFileDetails.Type);
-            var QualityRate = new SqlParameter("QualityRate", imageFileDetails.QualityRate);
-            await _context.Database.ExecuteSqlInterpolatedAsync($"EXEC [dbo].[IMAGE_FILE_DETAIL_INSERT] @ImageId={ImageId}, @Type={Type}, @QualityRate={QualityRate}");
         }
         public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {

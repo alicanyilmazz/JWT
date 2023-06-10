@@ -26,6 +26,7 @@
   <ItemGroup>
     <Folder Include="Configuration\StoredProcedureConfiguration\Delete\" />
     <Folder Include="Configuration\StoredProcedureConfiguration\Update\" />
+    <Folder Include="Repositories\Repositories\" />
   </ItemGroup>
 
 </Project>

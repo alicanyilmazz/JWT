@@ -16,8 +16,8 @@ namespace MiniApp3.Service.Services
     public class Service<TEntity, TDto> : IService<TEntity, TDto> where TEntity : class where TDto : class
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<TEntity> _repository;
-        public Service(IUnitOfWork unitOfWork, IRepository<TEntity> repository)
+        private readonly IEntityRepository<TEntity> _repository;
+        public Service(IUnitOfWork unitOfWork, IEntityRepository<TEntity> repository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
