@@ -42,7 +42,7 @@ builder.Services.AddTransient<IImageDbSaveManager, ImageDbSaveManager>();
 builder.Services.AddTransient<IImageDbSaveServices, ImageDbSaveServiceDefault>();
 builder.Services.AddTransient<IImageDbReadService, ImageDbReadService>();
 builder.Services.AddTransient<IImageServerSaveManager, ImageServerSaveManager>();
-builder.Services.AddTransient<IImageServerSaveService, MultistagedTransactionImageSaveService>();
+builder.Services.AddTransient<IImageServerSaveService, ImageServerSaveServiceDefault>();
 builder.Services.AddTransient<IImageServerReadService, ImageServerReadServiceDefault>();
 builder.Services.AddDbContext<AppDbContext>(x =>
 {
