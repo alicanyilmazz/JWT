@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using MiniApp3.Core.Dtos;
 using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories.StoredProcedureRepositories;
@@ -11,6 +12,7 @@ using System.Data;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MiniApp3.Data.Repositories.StoredProcedureRepositories.Query
 {
@@ -24,9 +26,10 @@ namespace MiniApp3.Data.Repositories.StoredProcedureRepositories.Query
             _serviceScopeFactory = serviceScopeFactory;
             _context = _serviceScopeFactory.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
         }
-        public async Task<List<ServerImagesInformation>> ReadPhotoInformation()
+        public async Task<List<ServerImagesInformation>> GetImages(string imageId)
         {
-            return await _context.Set<ServerImagesInformation>().FromSqlRaw("EXEC GET_ALL_IMAGES").ToListAsync();
+            var ImageId = new SqlParameter("ImageId", imageId);
+            return await _context.Set<ServerImagesInformation>().FromSqlInterpolated($"EXEC GET_IMAGES {ImageId}").ToListAsync();
         }
 
         public async Task<List<ImageQualityResponse>> GetImageQualityConfigs()
@@ -45,5 +48,10 @@ namespace MiniApp3.Data.Repositories.StoredProcedureRepositories.Query
 
             return (int)recordCountParameter.Value;
         }
+        //public async Task<List<ImageServerServiceResponse>> GetAllImages()
+        //{
+        //    var ImageId = new SqlParameter("ImageId", imageFileDetails.ImageId);
+        //    return await _context.Set<ImageServerServiceResponse>().FromSqlInterpolated($"EXEC GET_IMAGE_QUALITY").ToListAsync();
+        //}      
     }
 }
