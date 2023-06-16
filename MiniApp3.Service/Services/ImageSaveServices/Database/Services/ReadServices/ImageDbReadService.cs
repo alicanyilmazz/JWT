@@ -24,7 +24,6 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.ReadServ
                 bool recordIsExist = _repository.Where(x => x.Id.ToString() == id).Any();
                 if (!recordIsExist)
                 {
-
                     return Response<ImageDbServiceResponse>.Fail("Image not found!", 404, true);
                 }
                 var result = await _repository.Where(x => x.Id.ToString() == id).FirstOrDefaultAsync();
