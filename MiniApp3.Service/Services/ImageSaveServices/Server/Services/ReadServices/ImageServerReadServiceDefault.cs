@@ -1,6 +1,7 @@
 ﻿using MiniApp3.Core.Dtos;
 using MiniApp3.Core.Dtos.StoredProcedureDto;
 using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Repositories.StoredProcedureRepositories;
 using MiniApp3.Core.Services.Visual.Server;
 using MiniApp3.Service.DtoMappers;
 using SharedLibrary.Dtos;
@@ -14,17 +15,17 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
 {
     public class ImageServerReadServiceDefault : IImageServerReadService
     {
-        private readonly IEntityRepository<ServerImagesInformation> _repository;
-        public ImageServerReadServiceDefault(IEntityRepository<ServerImagesInformation> repository)
+        private readonly IStoredProcedureQueryRepository _storedProcedureQueryRepository;
+        public ImageServerReadServiceDefault(IStoredProcedureQueryRepository storedProcedureQueryRepository)
         {
-            _repository = repository;
+            _storedProcedureQueryRepository = storedProcedureQueryRepository;
         }
-        public async Task<Response<IEnumerable<ImageServerServiceResponse>>> GetAllPhotoAsync()
+        public async Task<Response<IEnumerable<ImageServerServiceResponse>>> GetPhotosAsync()
         {
             IEnumerable<ImageServerServiceResponse> entities;
             try
             {
-                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(null);
+                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImages(null));
             }
             catch (Exception e)
             {
@@ -33,9 +34,18 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
             return Response<IEnumerable<ImageServerServiceResponse>>.Success(entities, 200);
         }
 
-        public Task<Response<ImageServerServiceResponse>> GetThumnailPhotoAsync(string id)
+        public async Task<Response<IEnumerable<ImageServerServiceResponse>>> GetPhotoAsync(string imageId)
         {
-            throw new NotImplementedException();
+            IEnumerable<ImageServerServiceResponse> entities;
+            try
+            {
+                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImages(imageId));
+            }
+            catch (Exception e)
+            {
+                return Response<IEnumerable<ImageServerServiceResponse>>.Fail(e.Message, 404, true);
+            }
+            return Response<IEnumerable<ImageServerServiceResponse>>.Success(entities, 200);
         }
     }
 }
