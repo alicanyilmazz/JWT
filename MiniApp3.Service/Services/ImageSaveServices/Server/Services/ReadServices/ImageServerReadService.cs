@@ -11,28 +11,28 @@ using System.Threading.Tasks;
 
 namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServices
 {
-    public class ImageServerReadService : IImageServerReadService
-    {
-        private readonly IEntityRepository<ImageFile> _repository;
-        public ImageServerReadService(IEntityRepository<ImageFile> repository)
-        {
-            _repository = repository;
-        }
+    //public class ImageServerReadService : IImageServerReadService
+    //{
+    //    private readonly IEntityRepository<ImageFile> _repository;
+    //    public ImageServerReadService(IEntityRepository<ImageFile> repository)
+    //    {
+    //        _repository = repository;
+    //    }
 
-        public async Task<Response<IEnumerable<ImageServerServiceResponse>>> GetAllPhotoAsync()
-        {
-            var result = await _repository.ReadPhotoInfoDirectlyFromDatabase();
-            var res = new List<ImageServerServiceResponse>();
-            foreach (var item in result)
-            {
-                res.Add(new ImageServerServiceResponse { Path = item });
-            }
-            return Response<IEnumerable<ImageServerServiceResponse>>.Success(res, 200);
-        }
+    //    public async Task<Response<IEnumerable<ImageServerServiceResponse>>> GetAllPhotoAsync()
+    //    {
+    //        //var result = await _repository.ReadPhotoInfoDirectlyFromDatabase();
+    //        var res = new List<ImageServerServiceResponse>();
+    //        //foreach (var item in result)
+    //        //{
+    //        //    res.Add(new ImageServerServiceResponse { Path = item });
+    //        //}
+    //        return Response<IEnumerable<ImageServerServiceResponse>>.Success(res, 200);
+    //    }
 
-        public Task<Response<ImageServerServiceResponse>> GetThumnailPhotoAsync(string id)
-        {
-            throw new NotImplementedException();
-        }
-    }
+    //    public Task<Response<ImageServerServiceResponse>> GetThumnailPhotoAsync(string id)
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+    //}
 }

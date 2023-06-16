@@ -42,7 +42,14 @@ namespace MiniApp3.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _imageReadService.GetAllPhotoAsync();
+            var result = await _imageReadService.GetPhotosAsync();
+            return ActionResultInstance(result);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Get(string imageId)
+        {
+            var result = await _imageReadService.GetPhotoAsync(imageId);
             return ActionResultInstance(result);
         }
 

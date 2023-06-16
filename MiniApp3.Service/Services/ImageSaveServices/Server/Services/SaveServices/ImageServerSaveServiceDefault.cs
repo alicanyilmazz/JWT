@@ -20,16 +20,13 @@ using Image = SixLabors.ImageSharp.Image;
 
 namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServices
 {
-    public class MultistagedTransactionImageSaveService : IImageServerSaveService
+    public class ImageServerSaveServiceDefault : IImageServerSaveService
     {
-        private const int ThumbnailWidth = 300;
-        private const int FullScreenWidth = 1000;
-
         private readonly IUnitOfWork _unitOfWork;
         private readonly IEntityRepository<ImageFile> _repository;
         private readonly IStoredProcedureCommandRepository _storedProcedureCommandRepository;
         private readonly IStoredProcedureQueryRepository _storedProcedureQueryRepository;
-        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IEntityRepository<ImageFile> repository, IStoredProcedureCommandRepository storedProcedureCommandRepository, IStoredProcedureQueryRepository storedProcedureQueryRepository)
+        public ImageServerSaveServiceDefault(IUnitOfWork unitOfWork, IEntityRepository<ImageFile> repository, IStoredProcedureCommandRepository storedProcedureCommandRepository, IStoredProcedureQueryRepository storedProcedureQueryRepository)
         {
             _unitOfWork = unitOfWork;
             _repository = repository;
@@ -40,7 +37,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.SaveServic
         {
             var imageStorage = new ConcurrentDictionary<string, ImageFile>();
             var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
-            var totalImages = await _repository.CountAsync();
+            var totalImages = await _storedProcedureQueryRepository.GetNumberOfRecord();
             var imageQualityConfigs = await _storedProcedureQueryRepository.GetImageQualityConfigs();
             var tasks = images.Select(image => Task.Run(async () =>
             {

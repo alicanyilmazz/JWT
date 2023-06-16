@@ -21,6 +21,8 @@ namespace MiniApp3.Data.Context
         public DbSet<ImageQualityResponse> ImageQualityResult { get; set; }
         public DbSet<ServerImagesInformation> ServerImagesInformation { get; set; }
         public DbSet<ImageFileInformation> ImageFileInformation { get; set; }
+        public DbSet<ImageIndex> ImageIndex { get; set; }
+        
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
 
