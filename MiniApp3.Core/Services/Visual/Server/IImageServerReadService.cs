@@ -10,7 +10,7 @@ namespace MiniApp3.Core.Services.Visual.Server
 {
     public interface IImageServerReadService
     {
-        public Task<Response<ImageServerServiceResponse>> GetThumnailPhotoAsync(string id);
-        public Task<Response<IEnumerable<ImageServerServiceResponse>>> GetAllPhotoAsync();
+        public Task<Response<IEnumerable<ImageServerServiceResponse>>> GetPhotosAsync();
+        public Task<Response<IEnumerable<ImageServerServiceResponse>>> GetPhotoAsync(string imageId);
     }
 }
