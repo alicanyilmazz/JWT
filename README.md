@@ -216,3 +216,118 @@
         }
     }
 ```
+### GET_IMAGE
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[GET_IMAGE]    Script Date: 7/8/2023 2:42:28 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[GET_IMAGE]
+@ImageId UNIQUEIDENTIFIER = NULL
+AS
+BEGIN
+
+SELECT IMF.Folder + IMFD.Type + '_' + LOWER(IMFD.ImageId) + '.' + IMF.Extension AS Path FROM [dbo].[ImageFile] IMF WITH (NOLOCK)  JOIN [dbo].[ImageFileDetail] IMFD
+ON IMF.ImageId = IMFD.ImageId WHERE IMF.ImageId = @ImageId
+
+END
+```
+### GET_IMAGES
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[GET_IMAGES]    Script Date: 7/8/2023 2:43:21 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[GET_IMAGES]
+AS
+BEGIN
+
+SELECT IMF.Folder + IMFD.Type + '_' + LOWER(IMFD.ImageId) + '.' + IMF.Extension AS Path FROM [dbo].[ImageFile] IMF WITH (NOLOCK)  JOIN [dbo].[ImageFileDetail] IMFD
+ON IMF.ImageId = IMFD.ImageId 
+
+END
+```
+### GET_IMAGE_QUALITY
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[GET_IMAGE_QUALITY]    Script Date: 7/8/2023 2:43:56 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[GET_IMAGE_QUALITY]
+AS
+BEGIN
+SELECT [Name],[Rate],[ResizeWidth],[IsOriginal] FROM [dbo].[ImageQuality]
+END
+```
+### GET_NUMBER_OF_IMAGE_FILE
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[GET_NUMBER_OF_IMAGE_FILE]    Script Date: 7/8/2023 2:44:32 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[GET_NUMBER_OF_IMAGE_FILE]
+ @RecordCount INT OUTPUT
+AS
+BEGIN
+SELECT @RecordCount = COUNT(*) FROM [dbo].[ImageFile]
+END
+```
+### IMAGE_FILE_DETAIL_INSERT
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[IMAGE_FILE_DETAIL_INSERT]    Script Date: 7/8/2023 2:45:35 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[IMAGE_FILE_DETAIL_INSERT]
+@ImageId UNIQUEIDENTIFIER,
+@Type NVARCHAR(MAX),
+@QualityRate NVARCHAR(MAX)
+AS
+BEGIN
+INSERT INTO [dbo].[ImageFileDetail]
+           ([ImageId]
+           ,[Type]
+           ,[QualityRate])
+     VALUES (@ImageId,@Type,@QualityRate)
+END
+```
+### IMAGE_FILE_INSERT
+```SQL
+USE [ADVANCEPHOTODB]
+GO
+/****** Object:  StoredProcedure [dbo].[IMAGE_FILE_INSERT]    Script Date: 7/8/2023 2:46:10 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[IMAGE_FILE_INSERT]
+@ImageId UNIQUEIDENTIFIER,
+@Folder NVARCHAR(MAX),
+@Extension NVARCHAR(MAX)
+AS
+BEGIN
+INSERT INTO [dbo].[ImageFile] ([ImageId]
+           ,[Folder]
+           ,[Extension])
+     VALUES (@ImageId,@Folder,@Extension)
+END
+```
+
+```SQL
+
+```
