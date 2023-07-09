@@ -331,6 +331,64 @@ END
 1.) SP nin dondurdugu deger örneğin Koddaki A Entitysindeki Path diye bir props a mapleniyor olsun o zaman SP den donen degeri AS Path olarak isimlendirmelisin.
 2.) SP nin donus degerinin maplendiği A Entitysi Migrationda olmayacak ama DbContext içerisinde DbSet olarak tanımlı olmalı.
 3.) Bu arkadas bir Dto ya mapleniyorsa Mapperde tanımlı olmalı Reverse olarak.
+```c#
+   public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
+        {
+            try
+            {
+                var database = _context.Database;
+                var dbConnection = (SqlConnection)database.GetDbConnection();
+
+                var command = new SqlCommand($"SELECT [Folder] + '/' + CAST([Id] AS nvarchar(36)) FROM [ADVANCEPHOTODB].[dbo].[ImageFile]", dbConnection);
+                //command.Parameters.Add(new SqlParameter("@id", id));
+                dbConnection.Open();
+                var reader = await command.ExecuteReaderAsync();
+                var result = new List<string>();
+                if (reader.HasRows)
+                {
+                    while (reader.Read())
+                    {
+                        result.Add(reader.GetString(0));
+                    }
+                }
+                reader.Close();
+                return result;
+            }
+            catch (Exception)
+            {
+                // Log
+            }
+            return null;
+        }
+        public async Task<Stream> ReadPhotoDirectlyFromDatabase(string id, string content)
+        {
+            try
+            {
+                var database = _context.Database;
+                var dbConnection = (SqlConnection)database.GetDbConnection();
+
+                var command = new SqlCommand($"SELECT {content} FROM [ADVANCEPHOTODB].[dbo].[ImageData] WHERE Id = @id", dbConnection);
+                command.Parameters.Add(new SqlParameter("@id", id));
+                dbConnection.Open();
+                var reader = await command.ExecuteReaderAsync();
+                Stream result = null;
+                if (reader.HasRows)
+                {
+                    while (reader.Read())
+                    {
+                        result = reader.GetStream(0);
+                    }
+                }
+                reader.Close();
+                return result;
+            }
+            catch (Exception)
+            {
+                // Log
+            }
+            return null;
+        }
+```
 ```SQL
 
 ```
