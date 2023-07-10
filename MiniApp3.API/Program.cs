@@ -65,6 +65,19 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = options =>
+    {
+        var headers = options.Context.Response.GetTypedHeaders();
+        headers.CacheControl = new Microsoft.Net.Http.Headers.CacheControlHeaderValue
+        {
+            Public = true,
+            MaxAge = TimeSpan.FromDays(10)
+        };
+        headers.Expires = new DateTimeOffset(DateTime.UtcNow.AddDays(30));
+    }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
