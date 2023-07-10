@@ -25,7 +25,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
             IEnumerable<ImageServerServiceResponse> entities;
             try
             {
-                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImages(null));
+                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImages());
             }
             catch (Exception e)
             {
@@ -39,7 +39,7 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Server.Services.ReadServic
             IEnumerable<ImageServerServiceResponse> entities;
             try
             {
-                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImages(imageId));
+                entities = ObjectMapper.Mapper.Map<IEnumerable<ImageServerServiceResponse>>(await _storedProcedureQueryRepository.GetImage(imageId));
             }
             catch (Exception e)
             {
