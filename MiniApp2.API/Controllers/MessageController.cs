@@ -6,7 +6,7 @@ using MiniApp2.Core.Services;
 
 namespace MiniApp2.API.Controllers
 {
-    [Authorize]
+    [Authorize(Roles = "Admin,Manager")]
     [Route("api/[controller]/[action]")]
     [ApiController]
     public class MessageController : CustomBaseController
