@@ -32,6 +32,13 @@ builder.Services.AddDbContext<AppDbContext>(x =>
 builder.Services.Configure<CustomTokenOption>(builder.Configuration.GetSection("TokenOptions"));
 var tokenOptions = builder.Configuration.GetSection("TokenOptions").Get<CustomTokenOption>();
 builder.AddCustomTokenAuth(tokenOptions);
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("CountryPolicy", policy =>
+    {
+        policy.RequireClaim("country", "Turkey", "Crypus");
+    });
+});
 // Configure the HTTP request pipeline.
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
