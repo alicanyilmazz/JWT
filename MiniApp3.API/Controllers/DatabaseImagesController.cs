@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using MiniApp3.API.Common.Constants;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Services.Visual.Database;
@@ -6,6 +7,7 @@ using SharedLibrary.Dtos;
 
 namespace MiniApp3.API.Controllers
 {
+    [Authorize]
     [Route("api/[controller]/[action]")]
     [ApiController]
     public class DatabaseImagesController : CustomBaseController

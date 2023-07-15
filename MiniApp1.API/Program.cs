@@ -1,5 +1,17 @@
+
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using MiniApp1.API.Requirements.ClaimRequirements;
+using MiniApp1.Core.Repositories;
+using MiniApp1.Core.Services;
+using MiniApp1.Core.UnitOfWork;
+using MiniApp1.Data.Context;
+using MiniApp1.Data.Repositories.GenericRepositories;
+using MiniApp1.Data.UnitOfWork;
+using MiniApp1.Service.Services;
 using SharedLibrary.Configuration;
 using SharedLibrary.Extensions.Authorization;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,10 +22,29 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
+
+builder.Services.AddTransient(typeof(IEntityRepository<>), typeof(EntityRepository<>)); // CORE , DATA
+builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
+builder.Services.AddScoped<IAuthorizationHandler, BirthDateRequirementHandler>(); // CORE , DATA
+builder.Services.AddDbContext<AppDbContext>(x =>
+{
+    x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>
+    {
+        option.MigrationsAssembly(Assembly.GetAssembly(typeof(AppDbContext)).GetName().Name); // //option.MigrationsAssembly("MiniApp1.Data");
+    });
+});
 builder.Services.Configure<CustomTokenOption>(builder.Configuration.GetSection("TokenOptions"));
 var tokenOptions = builder.Configuration.GetSection("TokenOptions").Get<CustomTokenOption>();
 builder.AddCustomTokenAuth(tokenOptions);
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AgePolicy", policy =>
+    {
+        policy.Requirements.Add(new BirthDateRequirement(18));
+    });
+});
+var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

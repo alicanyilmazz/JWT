@@ -49,7 +49,7 @@ namespace AuthServer.Service.Services
             {
                 return Response<TokenDto>.Fail("Email or Password is wrong.", 400, true);
             }
-            var token = _tokenService.CreateToken(user);
+            var token = await _tokenService.CreateToken(user);
 
             var userRefreshToken = await _userRefreshTokenRepository.Where(x => x.UserId == user.Id).SingleOrDefaultAsync(); // We check if there is a refresh token before
             if (userRefreshToken == null)
@@ -94,7 +94,7 @@ namespace AuthServer.Service.Services
                 return Response<TokenDto>.Fail("UserId not found.", 404, true);
             }
 
-            var tokenDto = _tokenService.CreateToken(user);
+            var tokenDto = await _tokenService.CreateToken(user);
             if (tokenDto == null)
             {
                 return Response<TokenDto>.Fail("Token can not created.", 404, false);

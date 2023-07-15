@@ -2,6 +2,7 @@
 using MiniApp3.Core.Dtos;
 using MiniApp3.Core.Entities;
 using MiniApp3.Core.Repositories;
+using MiniApp3.Core.Repositories.StoredProcedureRepositories;
 using MiniApp3.Core.Services.Visual.Database;
 using SharedLibrary.Dtos;
 using System.Diagnostics;
@@ -10,10 +11,10 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.ReadServ
 {
     public class ImageDbReadService : IImageDbReadService
     {
-        private readonly IEntityRepository<ImageData> _repository;
-        public ImageDbReadService(IEntityRepository<ImageData> repository)
+        private readonly IStoredProcedureQueryRepository _storedProcedureQueryRepository;
+        public ImageDbReadService(IStoredProcedureQueryRepository storedProcedureQueryRepository)
         {
-            _repository = repository;
+            _storedProcedureQueryRepository = storedProcedureQueryRepository;
         }
 
         public async Task<Response<ImageDbServiceResponse>> GetThumnailPhotoAsync(string id)
@@ -21,13 +22,13 @@ namespace MiniApp3.Service.Services.ImageSaveServices.Database.Services.ReadServ
             Stream? image = null;
             try
             {
-                bool recordIsExist = _repository.Where(x => x.Id.ToString() == id).Any();
-                if (!recordIsExist)
-                {
-                    return Response<ImageDbServiceResponse>.Fail("Image not found!", 404, true);
-                }
-                var result = await _repository.Where(x => x.Id.ToString() == id).FirstOrDefaultAsync();
-                image = await _repository.ReadPhotoDirectlyFromDatabase(id, "ThumbnailContent");
+                //bool recordIsExist = _repository.Where(x => x.Id.ToString() == id).Any();
+                //if (!recordIsExist)
+                //{
+                //    return Response<ImageDbServiceResponse>.Fail("Image not found!", 404, true);
+                //}
+                //var result = await _repository.Where(x => x.Id.ToString() == id).FirstOrDefaultAsync();
+                image = await _storedProcedureQueryRepository.ReadPhotoDirectlyFromDatabase(id, "ThumbnailContent");
             }
             catch (Exception e)
             {

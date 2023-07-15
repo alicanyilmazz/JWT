@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AuthServer.API.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]/[action]")]
     [ApiController]
     public class UserController : CustomBaseController
     {
@@ -29,5 +29,20 @@ namespace AuthServer.API.Controllers
         {
             return ActionResultInstance(await _userService.GetUserByNameAsync(HttpContext.User.Identity.Name));
         }
+
+        [Authorize]
+        [HttpPost]
+        public async Task<IActionResult> CreateUserRole(CreateRoleDto createRoleDto)
+        {
+            return ActionResultInstance(await _userService.CreateUserRoles(createRoleDto));
+        }
+
+        // [Route("api/[controller]")] We do not get an error while leaving the Route definition like this and defining our third Method this way.
+        //[Authorize]
+        //[HttpPost("CreateUserRoles/{userName}")]
+        //public async Task<IActionResult> CreateUserRole(string userEmail, string roleName)
+        //{
+        //    return ActionResultInstance(await _userService.CreateUserRoles(userEmail, roleName));
+        //}
     }
 }

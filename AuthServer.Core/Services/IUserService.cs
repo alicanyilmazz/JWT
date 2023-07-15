@@ -1,4 +1,5 @@
 ﻿using AuthServer.Core.Dtos;
+using Microsoft.AspNetCore.Http.HttpResults;
 using SharedLibrary.Dtos;
 using System;
 using System.Collections.Generic;
@@ -11,6 +12,7 @@ namespace AuthServer.Core.Services
     public interface IUserService
     {
         Task<Response<UserAppDto>> CreateUserAsync(CreateUserDto createUserDto);
-        Task<Response<UserAppDto>> GetUserByNameAsync(string UserName);
+        Task<Response<UserAppDto>> GetUserByNameAsync(string userName);
+        Task<Response<NoContent>> CreateUserRoles(CreateRoleDto createRoleDto);
     }
 }

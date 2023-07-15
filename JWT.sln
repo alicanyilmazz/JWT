@@ -19,19 +19,31 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp3.API", "MiniApp3.AP
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SharedLibrary", "SharedLibrary\SharedLibrary.csproj", "{3D2B5F1A-808B-45BD-9DED-79B67E36226B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp4.API", "MiniApp4.API\MiniApp4.API.csproj", "{A3A34DF4-7F99-4591-8A7E-BD04A39A6D71}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp4.API", "MiniApp4.API\MiniApp4.API.csproj", "{A3A34DF4-7F99-4591-8A7E-BD04A39A6D71}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp4.Core", "MiniApp4.Core\MiniApp4.Core.csproj", "{A9D01E5A-7658-4704-8160-1606D7086E0D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp4.Core", "MiniApp4.Core\MiniApp4.Core.csproj", "{A9D01E5A-7658-4704-8160-1606D7086E0D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp4.Data", "MiniApp4.Data\MiniApp4.Data.csproj", "{161BEDE3-9283-494E-BB19-B4C7A4152657}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp4.Data", "MiniApp4.Data\MiniApp4.Data.csproj", "{161BEDE3-9283-494E-BB19-B4C7A4152657}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp4.Service", "MiniApp4.Service\MiniApp4.Service.csproj", "{0D259023-1E98-45CA-AB8E-130336FAE8A8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp4.Service", "MiniApp4.Service\MiniApp4.Service.csproj", "{0D259023-1E98-45CA-AB8E-130336FAE8A8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp3.Core", "MiniApp3.Core\MiniApp3.Core.csproj", "{574BE00B-12B3-47DC-8B69-3098D8EBB42E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp3.Core", "MiniApp3.Core\MiniApp3.Core.csproj", "{574BE00B-12B3-47DC-8B69-3098D8EBB42E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp3.Data", "MiniApp3.Data\MiniApp3.Data.csproj", "{6882480C-AD3A-43D0-AE66-116E980F6DE2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp3.Data", "MiniApp3.Data\MiniApp3.Data.csproj", "{6882480C-AD3A-43D0-AE66-116E980F6DE2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp3.Service", "MiniApp3.Service\MiniApp3.Service.csproj", "{48A824E9-8D1E-4F92-A516-B3CEF48A967A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MiniApp3.Service", "MiniApp3.Service\MiniApp3.Service.csproj", "{48A824E9-8D1E-4F92-A516-B3CEF48A967A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp1.Core", "MiniApp1.Core\MiniApp1.Core.csproj", "{77F06C7E-CAB5-4F24-B9AA-CB9BF3C2A26D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp1.Data", "MiniApp1.Data\MiniApp1.Data.csproj", "{42A7F33B-52A1-4856-B92D-6CC00C9CD008}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp1.Service", "MiniApp1.Service\MiniApp1.Service.csproj", "{BED80F68-FEF3-4D69-9E88-94C73FF538CF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp2.Core", "MiniApp2.Core\MiniApp2.Core.csproj", "{A19989B7-5D07-4A33-88DE-C511601D3D10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp2.Data", "MiniApp2.Data\MiniApp2.Data.csproj", "{6F2D96EF-70AC-4CA4-ACDE-59CAACE24929}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniApp2.Service", "MiniApp2.Service\MiniApp2.Service.csproj", "{B2FAEA01-788B-404B-83E6-F253C56E681A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -99,6 +111,30 @@ Global
 		{48A824E9-8D1E-4F92-A516-B3CEF48A967A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48A824E9-8D1E-4F92-A516-B3CEF48A967A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{48A824E9-8D1E-4F92-A516-B3CEF48A967A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77F06C7E-CAB5-4F24-B9AA-CB9BF3C2A26D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77F06C7E-CAB5-4F24-B9AA-CB9BF3C2A26D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77F06C7E-CAB5-4F24-B9AA-CB9BF3C2A26D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77F06C7E-CAB5-4F24-B9AA-CB9BF3C2A26D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{42A7F33B-52A1-4856-B92D-6CC00C9CD008}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42A7F33B-52A1-4856-B92D-6CC00C9CD008}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42A7F33B-52A1-4856-B92D-6CC00C9CD008}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42A7F33B-52A1-4856-B92D-6CC00C9CD008}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BED80F68-FEF3-4D69-9E88-94C73FF538CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BED80F68-FEF3-4D69-9E88-94C73FF538CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BED80F68-FEF3-4D69-9E88-94C73FF538CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BED80F68-FEF3-4D69-9E88-94C73FF538CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A19989B7-5D07-4A33-88DE-C511601D3D10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A19989B7-5D07-4A33-88DE-C511601D3D10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A19989B7-5D07-4A33-88DE-C511601D3D10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A19989B7-5D07-4A33-88DE-C511601D3D10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F2D96EF-70AC-4CA4-ACDE-59CAACE24929}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F2D96EF-70AC-4CA4-ACDE-59CAACE24929}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F2D96EF-70AC-4CA4-ACDE-59CAACE24929}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F2D96EF-70AC-4CA4-ACDE-59CAACE24929}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2FAEA01-788B-404B-83E6-F253C56E681A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2FAEA01-788B-404B-83E6-F253C56E681A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2FAEA01-788B-404B-83E6-F253C56E681A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2FAEA01-788B-404B-83E6-F253C56E681A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

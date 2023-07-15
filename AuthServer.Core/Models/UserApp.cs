@@ -10,5 +10,6 @@ namespace AuthServer.Core.Models
     public class UserApp : IdentityUser
     {
         public string Country { get; set; }
+        public DateTime DateOfBirth { get; set; }
     }
 }
