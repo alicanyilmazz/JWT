@@ -45,7 +45,8 @@ namespace AuthServer.Service.Services
                 new Claim(JwtRegisteredClaimNames.Email, userApp.Email), // you can use ' new Claim(ClaimTypes.Email, userApp.Email), ' instead of this line
                 new Claim(ClaimTypes.Name,userApp.UserName),
                 new Claim(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString()),
-                new Claim("country",userApp.Country)
+                new Claim("country",userApp.Country),
+                new Claim("birth-date",userApp.DateOfBirth.ToShortTimeString())
             };
 
             userList.AddRange(audience.Select(x => new Claim(JwtRegisteredClaimNames.Aud, x)));

@@ -6,7 +6,7 @@ using MiniApp1.Core.Services;
 
 namespace MiniApp1.API.Controllers
 {
-    [Authorize]
+    [Authorize(Roles ="Admin",Policy = "AgePolicy")]
     [Route("api/[controller]/[action]")]
     [ApiController]
     public class WeatherController : CustomBaseController

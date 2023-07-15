@@ -1,5 +1,6 @@
 
 using Microsoft.EntityFrameworkCore;
+using MiniApp1.API.Requirements.ClaimRequirements;
 using MiniApp1.Core.Repositories;
 using MiniApp1.Core.Services;
 using MiniApp1.Core.UnitOfWork;
@@ -34,6 +35,13 @@ builder.Services.AddDbContext<AppDbContext>(x =>
 builder.Services.Configure<CustomTokenOption>(builder.Configuration.GetSection("TokenOptions"));
 var tokenOptions = builder.Configuration.GetSection("TokenOptions").Get<CustomTokenOption>();
 builder.AddCustomTokenAuth(tokenOptions);
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AgePolicy", policy =>
+    {
+        policy.Requirements.Add(new BirthDateRequirement(18));
+    });
+});
 var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
