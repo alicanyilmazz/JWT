@@ -1,4 +1,5 @@
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using MiniApp1.API.Requirements.ClaimRequirements;
 using MiniApp1.Core.Repositories;
@@ -25,6 +26,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddTransient(typeof(IEntityRepository<>), typeof(EntityRepository<>)); // CORE , DATA
 builder.Services.AddScoped(typeof(IService<,>), typeof(Service<,>)); // CORE , SERVICE
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>(); // CORE , DATA
+builder.Services.AddScoped<IAuthorizationHandler, BirthDateRequirementHandler>(); // CORE , DATA
 builder.Services.AddDbContext<AppDbContext>(x =>
 {
     x.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer"), option =>

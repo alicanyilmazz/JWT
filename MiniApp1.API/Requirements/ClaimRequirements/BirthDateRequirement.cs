@@ -12,7 +12,7 @@ namespace MiniApp1.API.Requirements.ClaimRequirements
 
     }
 
-    public class BirthTimeRequirementHandler : AuthorizationHandler<BirthDateRequirement>
+    public class BirthDateRequirementHandler : AuthorizationHandler<BirthDateRequirement>
     {
         protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, BirthDateRequirement requirement)
         {
