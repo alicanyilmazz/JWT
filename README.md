@@ -349,10 +349,7 @@ INSERT INTO [dbo].[ImageFile] ([ImageId]
      VALUES (@ImageId,@Folder,@Extension)
 END
 ```
-### NOTE :  "The required column 'Path' was not present in the results of a 'FromSql' operation." hatasını alıyorsan kontrol etmen gereken yerler ; 
-1.) SP nin dondurdugu deger örneğin Koddaki A Entitysindeki Path diye bir props a mapleniyor olsun o zaman SP den donen degeri AS Path olarak isimlendirmelisin.
-2.) SP nin donus degerinin maplendiği A Entitysi Migrationda olmayacak ama DbContext içerisinde DbSet olarak tanımlı olmalı.
-3.) Bu arkadas bir Dto ya mapleniyorsa Mapperde tanımlı olmalı Reverse olarak.
+
 ```c#
    public async Task<List<string>> ReadPhotoInfoDirectlyFromDatabase()
         {
