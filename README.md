@@ -409,11 +409,11 @@ END
         }
 ```
 ```SQL
-USE [YourDatabaseName];
+USE [DatabaseAdin];
 
 DECLARE @SchemaName NVARCHAR(128) = 'dbo';
 DECLARE @TableName NVARCHAR(128) = 'TM';
-DECLARE @ColumnName NVARCHAR(128) = NULL; -- Set specific column name or leave NULL
+DECLARE @ColumnName NVARCHAR(128) = NULL;
 
 DECLARE @Columns TABLE (ColumnName NVARCHAR(128));
 INSERT INTO @Columns (ColumnName)
@@ -434,35 +434,20 @@ WHERE object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName)
     WHERE d.referenced_id = OBJECT_ID(@SchemaName + '.' + @TableName)
       AND o.type IN ('P', 'V')
 )
-
 SELECT 
     r.SchemaName AS ReferencingSchema,
     r.ObjectName AS ReferencingObject,
     r.ObjectType,
-    CASE WHEN @ColumnName IS NOT NULL THEN @ColumnName ELSE '-' END AS CheckedColumn,
-    CASE WHEN @ColumnName IS NOT NULL THEN
-        CASE WHEN r.ObjectDefinition LIKE '%' + @ColumnName + '%' THEN 'Exists' ELSE 'Not Exists' END
-        ELSE '-' END AS ColumnExists,
-    CASE WHEN r.ObjectDefinition LIKE '%SELECT * FROM%' THEN 'SELECT * Used' ELSE '-' END AS SelectStarUsed,
-    CASE WHEN @ColumnName IS NULL THEN
-        STUFF(
-            (SELECT ', ' + col.ColumnName
-             FROM @Columns col
-             WHERE r.ObjectDefinition LIKE '%' + col.ColumnName + '%'
-             FOR XML PATH(''), TYPE
-            ).value('.', 'NVARCHAR(MAX)'), 1, 2, '')
-         ELSE '-' END AS AllUsedColumns,
-    (SELECT COUNT(*) FROM @Columns col WHERE r.ObjectDefinition LIKE '%' + col.ColumnName + '%') AS UsedColumnCount,
-    (SELECT COUNT(*) FROM @Columns col WHERE r.ObjectDefinition NOT LIKE '%' + col.ColumnName + '%') AS UnusedColumnCount
+    STRING_AGG(col.ColumnName, ', ') AS UsedColumns,
+    CASE 
+        WHEN r.ObjectDefinition LIKE '%SELECT *%' THEN 'SELECT * Used'
+        ELSE 'No SELECT *'
+    END AS SelectStarWarning,
+    SUM(CASE WHEN r.ObjectDefinition LIKE '%' + col.ColumnName + '%' THEN 1 ELSE 0 END) AS UsedColumnCount,
+    SUM(CASE WHEN r.ObjectDefinition NOT LIKE '%' + col.ColumnName + '%' THEN 1 ELSE 0 END) AS UnusedColumnCount
 FROM ReferencingObjects r
+INNER JOIN @Columns col ON r.ObjectDefinition LIKE '%' + col.ColumnName + '%'
+GROUP BY r.SchemaName, r.ObjectName, r.ObjectType, r.ObjectDefinition
 ORDER BY r.ObjectType, r.ObjectName;
-
-IF (@ColumnName IS NOT NULL)
-BEGIN
-    SELECT 
-        SUM(CASE WHEN ObjectDefinition LIKE '%' + @ColumnName + '%' THEN 1 ELSE 0 END) AS TotalExistsCount,
-        SUM(CASE WHEN ObjectDefinition NOT LIKE '%' + @ColumnName + '%' THEN 1 ELSE 0 END) AS TotalNotExistsCount
-    FROM ReferencingObjects;
-END
 
 ```
