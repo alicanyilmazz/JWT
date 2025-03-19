@@ -444,11 +444,9 @@ SELECT
             CASE WHEN r.ObjectDefinition LIKE '%' + @ColumnName + '%' THEN 'Exists' ELSE 'Not Exists' END
         ELSE '-' END AS ColumnExists,
     CASE WHEN r.ObjectDefinition LIKE '%SELECT * FROM%' THEN 'SELECT * Used' ELSE 'No SELECT *' END AS SelectStarUsed,
-    CASE WHEN @ColumnName IS NULL THEN
-        STRING_AGG(col.ColumnName, ', ') ELSE '-' END AS AllUsedColumns
+    STRING_AGG(col.ColumnName, ', ') AS AllUsedColumns
 FROM ReferencingObjects r
-LEFT JOIN @Columns col ON @ColumnName IS NULL
-    AND r.ObjectDefinition LIKE '%' + col.ColumnName + '%'
+LEFT JOIN @Columns col ON r.ObjectDefinition LIKE '%' + col.ColumnName + '%'
 GROUP BY r.SchemaName, r.ObjectName, r.ObjectType, r.ObjectDefinition
 ORDER BY r.ObjectType, r.ObjectName;
 
