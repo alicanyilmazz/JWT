@@ -409,22 +409,52 @@ END
         }
 ```
 ```SQL
+
 USE [DatabaseAdin];
 
 DECLARE @SchemaName NVARCHAR(128) = 'dbo';
 DECLARE @TableName NVARCHAR(128) = 'TM';
+DECLARE @ColumnName NVARCHAR(128) = NULL;
 
-SELECT DISTINCT
-    OBJECT_SCHEMA_NAME(o.object_id) AS ReferencingSchema,
-    OBJECT_NAME(o.object_id) AS ReferencingObject,
-    o.type_desc AS ObjectType
-FROM sys.sql_modules m
-INNER JOIN sys.objects o ON m.object_id = o.object_id
-WHERE (m.definition LIKE '%SELECT * FROM%' 
-       OR m.definition LIKE '%SELECT*FROM%')
-  AND m.definition LIKE '%' + @SchemaName + '.' + @TableName + '%'
-  AND o.type IN ('P', 'V')
-ORDER BY ObjectType, ReferencingObject;
+DECLARE @Columns TABLE (ColumnName NVARCHAR(128));
+INSERT INTO @Columns (ColumnName)
+SELECT name FROM sys.columns 
+WHERE object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName));
+
+;WITH ReferencingObjects AS
+(
+    SELECT DISTINCT 
+        o.object_id,
+        OBJECT_SCHEMA_NAME(o.object_id) AS SchemaName,
+        OBJECT_NAME(o.object_id) AS ObjectName,
+        o.type_desc AS ObjectType,
+        m.definition AS ObjectDefinition
+    FROM sys.sql_expression_dependencies d
+    INNER JOIN sys.objects o ON d.referencing_id = o.object_id
+    INNER JOIN sys.sql_modules m ON o.object_id = m.object_id
+    WHERE d.referenced_id = OBJECT_ID(@SchemaName + '.' + @TableName)
+      AND o.type IN ('P', 'V')
+)
+SELECT r.SchemaName AS ReferencingSchema,
+       r.ObjectName AS ReferencingObject,
+       r.ObjectType,
+       CASE WHEN @ColumnName IS NULL THEN c.ColumnName ELSE @ColumnName END AS CheckedColumn,
+       CASE WHEN @ColumnName IS NULL THEN
+           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + c.ColumnName + ' %' THEN 'Exists'
+                ELSE 'NotExists' END
+       ELSE
+           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + @ColumnName + ' %' THEN 'Exists'
+                ELSE 'NotExists' END
+       END AS ColumnUsage,
+       STUFF((SELECT ', ' + col.ColumnName
+              FROM @Columns col
+              WHERE r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + col.ColumnName + ' %'
+              FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS AllUsedColumns
+FROM ReferencingObjects r
+LEFT JOIN sys.sql_modules m ON r.object_id = m.object_id
+CROSS JOIN @Columns c
+WHERE (@ColumnName IS NULL OR c.ColumnName = @ColumnName)
+ORDER BY r.ObjectType, r.ObjectName, c.ColumnName;
 
 
 ```
