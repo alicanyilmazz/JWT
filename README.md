@@ -440,21 +440,30 @@ SELECT r.SchemaName AS ReferencingSchema,
        r.ObjectType,
        CASE WHEN @ColumnName IS NULL THEN c.ColumnName ELSE @ColumnName END AS CheckedColumn,
        CASE WHEN @ColumnName IS NULL THEN
-           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + c.ColumnName + ' %' THEN 'Exists'
+           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + c.ColumnName + ' %' 
+                     OR r.ObjectDefinition LIKE '% ' + c.ColumnName + ' %' 
+                     OR r.ObjectDefinition LIKE '% ' + c.ColumnName + ' %' ESCAPE '\'
+                THEN 'Exists'
                 ELSE 'NotExists' END
        ELSE
-           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + @ColumnName + ' %' THEN 'Exists'
+           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + @ColumnName + ' %' 
+                     OR r.ObjectDefinition LIKE '% ' + @ColumnName + ' %' 
+                     OR r.ObjectDefinition LIKE '% ' + @ColumnName + ' %' ESCAPE '\'
+                THEN 'Exists'
                 ELSE 'NotExists' END
        END AS ColumnUsage,
        STUFF((SELECT ', ' + col.ColumnName
               FROM @Columns col
-              WHERE r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + col.ColumnName + ' %'
+              WHERE r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + col.ColumnName + ' %' 
+                    OR r.ObjectDefinition LIKE '% ' + col.ColumnName + ' %'
+                    OR r.ObjectDefinition LIKE '% ' + col.ColumnName + ' %' ESCAPE '\'
               FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS AllUsedColumns
 FROM ReferencingObjects r
 LEFT JOIN sys.sql_modules m ON r.object_id = m.object_id
 CROSS JOIN @Columns c
 WHERE (@ColumnName IS NULL OR c.ColumnName = @ColumnName)
 ORDER BY r.ObjectType, r.ObjectName, c.ColumnName;
+
 
 
 ```
