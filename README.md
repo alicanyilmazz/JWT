@@ -413,42 +413,18 @@ USE [DatabaseAdin];
 
 DECLARE @SchemaName NVARCHAR(128) = 'dbo';
 DECLARE @TableName NVARCHAR(128) = 'TM';
-DECLARE @ColumnName NVARCHAR(128) = NULL;
 
-DECLARE @Columns TABLE (ColumnName NVARCHAR(128));
-INSERT INTO @Columns (ColumnName)
-SELECT name FROM sys.columns 
-WHERE object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName));
-
-;WITH ReferencingObjects AS
-(
-    SELECT DISTINCT 
-        o.object_id,
-        OBJECT_SCHEMA_NAME(o.object_id) AS SchemaName,
-        OBJECT_NAME(o.object_id) AS ObjectName,
-        o.type_desc AS ObjectType,
-        m.definition AS ObjectDefinition
-    FROM sys.sql_expression_dependencies d
-    INNER JOIN sys.objects o ON d.referencing_id = o.object_id
-    INNER JOIN sys.sql_modules m ON o.object_id = m.object_id
-    WHERE d.referenced_id = OBJECT_ID(@SchemaName + '.' + @TableName)
-      AND o.type IN ('P', 'V')
-)
-SELECT 
-    r.SchemaName AS ReferencingSchema,
-    r.ObjectName AS ReferencingObject,
-    r.ObjectType,
-    CASE WHEN @ColumnName IS NOT NULL THEN @ColumnName ELSE '-' END AS CheckedColumn,
-    CASE 
-        WHEN @ColumnName IS NOT NULL THEN
-            CASE WHEN r.ObjectDefinition LIKE '%' + @ColumnName + '%' THEN 'Exists' ELSE 'Not Exists' END
-        ELSE '-' END AS ColumnExists,
-    CASE WHEN r.ObjectDefinition LIKE '%SELECT * FROM%' THEN 'SELECT * Used' ELSE 'No SELECT *' END AS SelectStarUsed,
-    STRING_AGG(col.ColumnName, ', ') AS AllUsedColumns
-FROM ReferencingObjects r
-LEFT JOIN @Columns col ON r.ObjectDefinition LIKE '%' + col.ColumnName + '%'
-GROUP BY r.SchemaName, r.ObjectName, r.ObjectType, r.ObjectDefinition
-ORDER BY r.ObjectType, r.ObjectName;
+SELECT DISTINCT
+    OBJECT_SCHEMA_NAME(o.object_id) AS ReferencingSchema,
+    OBJECT_NAME(o.object_id) AS ReferencingObject,
+    o.type_desc AS ObjectType
+FROM sys.sql_modules m
+INNER JOIN sys.objects o ON m.object_id = o.object_id
+WHERE (m.definition LIKE '%SELECT * FROM%' 
+       OR m.definition LIKE '%SELECT*FROM%')
+  AND m.definition LIKE '%' + @SchemaName + '.' + @TableName + '%'
+  AND o.type IN ('P', 'V')
+ORDER BY ObjectType, ReferencingObject;
 
 
 ```
