@@ -412,57 +412,20 @@ END
 
 USE [DatabaseAdin];
 
-DECLARE @SchemaName NVARCHAR(128) = 'dbo';
-DECLARE @TableName NVARCHAR(128) = 'TM';
-DECLARE @ColumnName NVARCHAR(128) = NULL;
-
-DECLARE @Columns TABLE (ColumnName NVARCHAR(128));
-INSERT INTO @Columns (ColumnName)
-SELECT name FROM sys.columns 
-WHERE object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName));
-
-;WITH ReferencingObjects AS
-(
-    SELECT DISTINCT 
-        o.object_id,
-        OBJECT_SCHEMA_NAME(o.object_id) AS SchemaName,
-        OBJECT_NAME(o.object_id) AS ObjectName,
-        o.type_desc AS ObjectType,
-        m.definition AS ObjectDefinition
-    FROM sys.sql_expression_dependencies d
-    INNER JOIN sys.objects o ON d.referencing_id = o.object_id
-    INNER JOIN sys.sql_modules m ON o.object_id = m.object_id
-    WHERE d.referenced_id = OBJECT_ID(@SchemaName + '.' + @TableName)
-      AND o.type IN ('P', 'V')
+WITH CTE AS (
+    SELECT 
+        TEMPLATE_ID, 
+        MENU_NAME, 
+        TRANSACTION_NAME,
+        COUNT(*) OVER (PARTITION BY MENU_NAME, TRANSACTION_NAME) AS SameGroupCount
+    FROM ATM.MENU_TEMPLATE
+    WHERE TEMPLATE_ID IN (1, 2)
 )
-SELECT r.SchemaName AS ReferencingSchema,
-       r.ObjectName AS ReferencingObject,
-       r.ObjectType,
-       CASE WHEN @ColumnName IS NULL THEN c.ColumnName ELSE @ColumnName END AS CheckedColumn,
-       CASE WHEN @ColumnName IS NULL THEN
-           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + c.ColumnName + ' %' 
-                     OR r.ObjectDefinition LIKE '% ' + c.ColumnName + ' %' 
-                     OR r.ObjectDefinition LIKE '% ' + c.ColumnName + ' %' ESCAPE '\'
-                THEN 'Exists'
-                ELSE 'NotExists' END
-       ELSE
-           CASE WHEN r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + @ColumnName + ' %' 
-                     OR r.ObjectDefinition LIKE '% ' + @ColumnName + ' %' 
-                     OR r.ObjectDefinition LIKE '% ' + @ColumnName + ' %' ESCAPE '\'
-                THEN 'Exists'
-                ELSE 'NotExists' END
-       END AS ColumnUsage,
-       STUFF((SELECT ', ' + col.ColumnName
-              FROM @Columns col
-              WHERE r.ObjectDefinition LIKE '% ' + QUOTENAME(@SchemaName) + '.' + QUOTENAME(@TableName) + '.' + col.ColumnName + ' %' 
-                    OR r.ObjectDefinition LIKE '% ' + col.ColumnName + ' %'
-                    OR r.ObjectDefinition LIKE '% ' + col.ColumnName + ' %' ESCAPE '\'
-              FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS AllUsedColumns
-FROM ReferencingObjects r
-LEFT JOIN sys.sql_modules m ON r.object_id = m.object_id
-CROSS JOIN @Columns c
-WHERE (@ColumnName IS NULL OR c.ColumnName = @ColumnName)
-ORDER BY r.ObjectType, r.ObjectName, c.ColumnName;
+SELECT TEMPLATE_ID, MENU_NAME, TRANSACTION_NAME
+FROM CTE
+WHERE SameGroupCount > 1
+ORDER BY MENU_NAME, TRANSACTION_NAME, TEMPLATE_ID;
+
 
 
 
