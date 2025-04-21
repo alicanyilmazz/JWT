@@ -418,6 +418,28 @@ JOIN sys.tables t ON c.object_id = t.object_id
 WHERE c.name LIKE '%ATM%' OR c.name LIKE '%TERMINAL%'
 ORDER BY t.name, c.name;
 
+DECLARE @SearchValue NVARCHAR(100) = 'CAV';
+DECLARE @SQL NVARCHAR(MAX) = '';
+
+SELECT @SQL = STRING_AGG(CAST('
+IF EXISTS (
+    SELECT 1 FROM [' + s.name + '].[' + t.name + '] 
+    WHERE TRY_CAST([' + c.name + '] AS NVARCHAR(MAX)) COLLATE Latin1_General_CS_AS = ''' + @SearchValue + '''
+)
+BEGIN
+    PRINT ''Bulundu: ' + s.name + '.' + t.name + ' → Kolon: ' + c.name + ''';
+END
+' AS NVARCHAR(MAX)), '
+')
+FROM sys.columns c
+JOIN sys.tables t ON c.object_id = t.object_id
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+JOIN sys.types ty ON c.user_type_id = ty.user_type_id
+WHERE 
+    ty.name IN ('char', 'varchar', 'nvarchar', 'nchar') AND
+    (c.name LIKE '%ATM%' OR c.name LIKE '%TERMINAL%');
+
+EXEC sp_executesql @SQL;
 
 
 
