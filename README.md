@@ -410,24 +410,13 @@ END
 ```
 ```SQL
 
-DECLARE @SearchValue NVARCHAR(100) = 'CAV';
-DECLARE @SQL NVARCHAR(MAX) = '';
-
-SELECT @SQL = STRING_AGG(CAST('
-IF EXISTS (
-    SELECT 1 FROM [' + s.name + '].[' + t.name + '] 
-    WHERE ' + STRING_AGG('TRY_CAST([' + c.name + '] AS NVARCHAR(MAX)) COLLATE Latin1_General_CS_AS LIKE ''%' + @SearchValue + '%''', ' OR ') + '
-)
-PRINT ''' + s.name + '.' + t.name + ''''
-AS NVARCHAR(MAX)), '
-')
-FROM sys.tables t
-JOIN sys.schemas s ON t.schema_id = s.schema_id
-JOIN sys.columns c ON c.object_id = t.object_id
-JOIN sys.types y ON c.user_type_id = y.user_type_id
-WHERE y.name IN ('char', 'nchar', 'varchar', 'nvarchar', 'text', 'ntext');
-
-EXEC sp_executesql @SQL;
+SELECT 
+    t.name AS TableName,
+    c.name AS ColumnName
+FROM sys.columns c
+JOIN sys.tables t ON c.object_id = t.object_id
+WHERE c.name LIKE '%ATM%' OR c.name LIKE '%TERMINAL%'
+ORDER BY t.name, c.name;
 
 
 
