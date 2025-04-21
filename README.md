@@ -410,21 +410,24 @@ END
 ```
 ```SQL
 
-USE [DatabaseAdin];
+DECLARE @SearchValue NVARCHAR(100) = 'CAV';
+DECLARE @SQL NVARCHAR(MAX) = '';
 
-WITH CTE AS (
-    SELECT 
-        TEMPLATE_ID, 
-        MENU_NAME, 
-        TRANSACTION_NAME,
-        COUNT(*) OVER (PARTITION BY MENU_NAME, TRANSACTION_NAME) AS SameGroupCount
-    FROM ATM.MENU_TEMPLATE
-    WHERE TEMPLATE_ID IN (1, 2)
+SELECT @SQL = STRING_AGG(CAST('
+IF EXISTS (
+    SELECT 1 FROM [' + s.name + '].[' + t.name + '] 
+    WHERE ' + STRING_AGG('TRY_CAST([' + c.name + '] AS NVARCHAR(MAX)) COLLATE Latin1_General_CS_AS LIKE ''%' + @SearchValue + '%''', ' OR ') + '
 )
-SELECT TEMPLATE_ID, MENU_NAME, TRANSACTION_NAME
-FROM CTE
-WHERE SameGroupCount > 1
-ORDER BY MENU_NAME, TRANSACTION_NAME, TEMPLATE_ID;
+PRINT ''' + s.name + '.' + t.name + ''''
+AS NVARCHAR(MAX)), '
+')
+FROM sys.tables t
+JOIN sys.schemas s ON t.schema_id = s.schema_id
+JOIN sys.columns c ON c.object_id = t.object_id
+JOIN sys.types y ON c.user_type_id = y.user_type_id
+WHERE y.name IN ('char', 'nchar', 'varchar', 'nvarchar', 'text', 'ntext');
+
+EXEC sp_executesql @SQL;
 
 
 
