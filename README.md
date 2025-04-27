@@ -409,18 +409,128 @@ END
         }
 ```
 ```SQL
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editModalLabel">Kaydı Düzenle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editForm">
+          <input type="hidden" id="edit-id" />
 
-DECLARE @EskiAd NVARCHAR(128) = 'EskiTabloAdi';
-DECLARE @YeniAd NVARCHAR(128) = 'YeniTabloAdi';
-DECLARE @Sema NVARCHAR(128) = 'dbo';
+          <div class="row mb-3">
+            <div class="col">
+              <label for="edit-serviceid" class="form-label">ServiceId</label>
+              <input type="text" id="edit-serviceid" class="form-control" />
+            </div>
+            <div class="col">
+              <label for="edit-expression" class="form-label">Expression</label>
+              <input type="text" id="edit-expression" class="form-control" />
+            </div>
+          </div>
 
-IF OBJECT_ID(@Sema + '.' + QUOTENAME(@YeniAd), 'U') IS NULL
-    AND OBJECT_ID(@Sema + '.' + QUOTENAME(@EskiAd), 'U') IS NOT NULL
-BEGIN
-    DECLARE @RenameSQL NVARCHAR(200);
-    SET @RenameSQL = 'EXEC sp_rename ''' + @Sema + '.' + @EskiAd + ''', ''' + @YeniAd + '''';
-    EXEC sp_executesql @RenameSQL;
-END
+          <div class="mb-3">
+            <label for="edit-description" class="form-label">Description</label>
+            <input type="text" id="edit-description" class="form-control" />
+          </div>
+
+          <div class="mb-3">
+            <label for="edit-response" class="form-label">Response</label>
+            <textarea id="edit-response" class="form-control" rows="3"></textarea>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col">
+              <label for="edit-httpret" class="form-label">HttpReturnCode</label>
+              <input type="number" id="edit-httpret" class="form-control" />
+            </div>
+            <div class="col">
+              <label for="edit-usercode" class="form-label">LastUpdatingUserCode</label>
+              <input type="text" id="edit-usercode" class="form-control" />
+            </div>
+            <div class="col">
+              <label for="edit-trancode" class="form-label">LastUpdatingTranCode</label>
+              <input type="text" id="edit-trancode" class="form-control" />
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col">
+              <label for="edit-updatedate" class="form-label">UpdateDate</label>
+              <input type="date" id="edit-updatedate" class="form-control" />
+            </div>
+            <div class="col">
+              <label for="edit-status" class="form-label">RecordStatus</label>
+              <input type="text" id="edit-status" class="form-control" />
+            </div>
+          </div>
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+        <button type="button" class="btn btn-primary" onclick="saveChanges()">Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var editModal = document.getElementById('editModal');
+  editModal.addEventListener('show.bs.modal', function (event) {
+    var button = event.relatedTarget;
+
+    document.getElementById('edit-id').value = button.getAttribute('data-id');
+    document.getElementById('edit-serviceid').value = button.getAttribute('data-serviceid');
+    document.getElementById('edit-expression').value = button.getAttribute('data-expression');
+    document.getElementById('edit-description').value = button.getAttribute('data-description');
+    document.getElementById('edit-response').value = button.getAttribute('data-response');
+    document.getElementById('edit-httpret').value = button.getAttribute('data-httpret');
+    document.getElementById('edit-usercode').value = button.getAttribute('data-usercode');
+    document.getElementById('edit-trancode').value = button.getAttribute('data-trancode');
+    document.getElementById('edit-updatedate').value = button.getAttribute('data-updatedate');
+    document.getElementById('edit-status').value = button.getAttribute('data-status');
+  });
+
+  function saveChanges() {
+    var editedData = {
+      Id: document.getElementById('edit-id').value,
+      ServiceId: document.getElementById('edit-serviceid').value,
+      Expression: document.getElementById('edit-expression').value,
+      Description: document.getElementById('edit-description').value,
+      Response: document.getElementById('edit-response').value,
+      HttpReturnCode: document.getElementById('edit-httpret').value,
+      LastUpdatingUserCode: document.getElementById('edit-usercode').value,
+      LastUpdatingTranCode: document.getElementById('edit-trancode').value,
+      UpdateDate: document.getElementById('edit-updatedate').value,
+      RecordStatus: document.getElementById('edit-status').value
+    };
+
+    console.log(editedData); // Şu anda console'a basıyoruz
+
+    // Burada AJAX POST ile server'a gönderebilirsin:
+    /*
+    $.ajax({
+      url: '/Simulator/UpdateSimulator', // Controller/Action
+      method: 'POST',
+      data: editedData,
+      success: function(response) {
+        alert('Başarıyla kaydedildi!');
+        location.reload();
+      },
+      error: function() {
+        alert('Hata oluştu!');
+      }
+    });
+    */
+
+    var modal = bootstrap.Modal.getInstance(editModal);
+    modal.hide();
+  }
+</script>
 
 
 
