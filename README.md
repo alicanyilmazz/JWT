@@ -418,6 +418,20 @@ Get-ChildItem -Path "ScreenDefinition" -Directory | ForEach-Object {
     }
 }
 
+$folder1 = "C:\Path\To\Folder1"
+$folder2 = "C:\Path\To\Folder2"
+
+$files1 = Get-ChildItem -Path $folder1 -Filter *.xml -File | Select-Object -ExpandProperty Name
+$files2 = Get-ChildItem -Path $folder2 -Filter *.xml -File | Select-Object -ExpandProperty Name
+
+$onlyInFolder1 = $files1 | Where-Object { $_ -notin $files2 }
+$onlyInFolder2 = $files2 | Where-Object { $_ -notin $files1 }
+
+Write-Host "`n🔸 Only in Folder1:"
+$onlyInFolder1
+
+Write-Host "`n🔸 Only in Folder2:"
+$onlyInFolder2
 
 
 
