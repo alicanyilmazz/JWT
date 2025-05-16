@@ -433,6 +433,17 @@ $onlyInFolder1
 Write-Host "`n🔸 Only in Folder2:"
 $onlyInFolder2
 
+Get-ChildItem -Path "ScreenDefinition" -Directory | ForEach-Object {
+    $folderName = $_.FullName
+    $xmlFiles = Get-ChildItem -Path $folderName -Filter *.xml -File
+
+    [PSCustomObject]@{
+        Folder   = $_.Name
+        XmlCount = $xmlFiles.Count
+        XmlFiles = $xmlFiles.Name -join ", "
+    }
+}
+
 
 
 ```
