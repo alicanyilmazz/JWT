@@ -444,6 +444,16 @@ Get-ChildItem -Path "ScreenDefinition" -Directory | ForEach-Object {
     }
 }
 
+SELECT
+    object_name = OBJECT_NAME(st.objectid),
+    execution_time = qs.last_execution_time,
+    elapsed_ms = qs.total_elapsed_time / qs.execution_count,
+    executions = qs.execution_count
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+WHERE OBJECT_NAME(st.objectid) = 'SeninSPAdi'
+ORDER BY execution_time DESC;
+
 
 
 ```
