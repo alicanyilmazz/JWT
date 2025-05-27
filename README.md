@@ -454,6 +454,20 @@ CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
 WHERE OBJECT_NAME(st.objectid) = 'SeninSPAdi'
 ORDER BY execution_time DESC;
 
+USE msdb;
+SELECT 
+    j.name AS JobName,
+    h.run_date,
+    h.run_time,
+    h.run_duration
+FROM dbo.sysjobhistory h
+JOIN dbo.sysjobs j ON h.job_id = j.job_id
+WHERE 
+    CONVERT(DATETIME, 
+        CAST(h.run_date AS CHAR(8)) + ' ' +
+        STUFF(STUFF(RIGHT('000000' + CAST(h.run_time AS VARCHAR(6)),6),3,0,':'),6,0,':')) 
+    BETWEEN '2024-05-24T01:50:00' AND '2024-05-24T02:10:00'
+ORDER BY run_date DESC, run_time DESC;
 
 
 ```
