@@ -409,65 +409,27 @@ END
         }
 ```
 ```SQL
-Get-ChildItem -Path "ScreenDefinition" -Directory | ForEach-Object {
-    $folderName = $_.FullName
-    $xmlCount = Get-ChildItem -Path $folderName -Filter *.xml -File | Measure-Object | Select-Object -ExpandProperty Count
-    [PSCustomObject]@{
-        Folder = $_.Name
-        XmlCount = $xmlCount
-    }
-}
 
-$folder1 = "C:\Path\To\Folder1"
-$folder2 = "C:\Path\To\Folder2"
+DECLARE @TableName NVARCHAR(128) = 'YourTableName'  -- Tablo adını yaz
+DECLARE @IndexName NVARCHAR(128) = 'YourIndexName'  -- Silmek istediğin index adını yaz
+DECLARE @SQL NVARCHAR(MAX)
 
-$files1 = Get-ChildItem -Path $folder1 -Filter *.xml -File | Select-Object -ExpandProperty Name
-$files2 = Get-ChildItem -Path $folder2 -Filter *.xml -File | Select-Object -ExpandProperty Name
-
-$onlyInFolder1 = $files1 | Where-Object { $_ -notin $files2 }
-$onlyInFolder2 = $files2 | Where-Object { $_ -notin $files1 }
-
-Write-Host "`n🔸 Only in Folder1:"
-$onlyInFolder1
-
-Write-Host "`n🔸 Only in Folder2:"
-$onlyInFolder2
-
-Get-ChildItem -Path "ScreenDefinition" -Directory | ForEach-Object {
-    $folderName = $_.FullName
-    $xmlFiles = Get-ChildItem -Path $folderName -Filter *.xml -File
-
-    [PSCustomObject]@{
-        Folder   = $_.Name
-        XmlCount = $xmlFiles.Count
-        XmlFiles = $xmlFiles.Name -join ", "
-    }
-}
-
-SELECT
-    object_name = OBJECT_NAME(st.objectid),
-    execution_time = qs.last_execution_time,
-    elapsed_ms = qs.total_elapsed_time / qs.execution_count,
-    executions = qs.execution_count
-FROM sys.dm_exec_query_stats qs
-CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
-WHERE OBJECT_NAME(st.objectid) = 'SeninSPAdi'
-ORDER BY execution_time DESC;
-
-USE msdb;
-SELECT 
-    j.name AS JobName,
-    h.run_date,
-    h.run_time,
-    h.run_duration
-FROM dbo.sysjobhistory h
-JOIN dbo.sysjobs j ON h.job_id = j.job_id
-WHERE 
-    CONVERT(DATETIME, 
-        CAST(h.run_date AS CHAR(8)) + ' ' +
-        STUFF(STUFF(RIGHT('000000' + CAST(h.run_time AS VARCHAR(6)),6),3,0,':'),6,0,':')) 
-    BETWEEN '2024-05-24T01:50:00' AND '2024-05-24T02:10:00'
-ORDER BY run_date DESC, run_time DESC;
+IF EXISTS (
+    SELECT 1
+    FROM sys.indexes i
+    INNER JOIN sys.tables t ON i.object_id = t.object_id
+    WHERE i.name = @IndexName
+      AND t.name = @TableName
+)
+BEGIN
+    SET @SQL = 'DROP INDEX [' + @IndexName + '] ON [' + @TableName + '];'
+    PRINT @SQL
+    EXEC sp_executesql @SQL
+END
+ELSE
+BEGIN
+    PRINT 'Belirtilen index bulunamadı: ' + @IndexName
+END
 
 
 ```
