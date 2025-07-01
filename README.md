@@ -410,30 +410,17 @@ END
 ```
 ```SQL
 
-DECLARE @SchemaName NVARCHAR(128) = 'dbo'  -- Şemanın adını buraya yaz
-DECLARE @TableName NVARCHAR(128) = 'YourTableName'  -- Tablo adını buraya yaz
-DECLARE @IndexName NVARCHAR(128) = 'YourIndexName'  -- Silmek istediğin index adını buraya yaz
-DECLARE @SQL NVARCHAR(MAX)
-
-IF EXISTS (
-    SELECT 1
-    FROM sys.indexes i
-    INNER JOIN sys.tables t ON i.object_id = t.object_id
-    INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-    WHERE i.name = @IndexName
-      AND t.name = @TableName
-      AND s.name = @SchemaName
-)
-BEGIN
-    SET @SQL = 'DROP INDEX [' + @IndexName + '] ON [' + @SchemaName + '].[' + @TableName + '];'
-    PRINT @SQL
-    EXEC sp_executesql @SQL
-END
-ELSE
-BEGIN
-    PRINT 'Belirtilen index bulunamadı: ' + @IndexName
-END
-
+SELECT i.name AS IndexName
+FROM sys.indexes i
+INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+INNER JOIN sys.tables t ON i.object_id = t.object_id
+INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+WHERE c.name = 'TRAN_CODE'
+  AND t.name = 'MESSAGE'
+  AND s.name = 'LOG'
+  AND i.is_unique = 1
+  AND i.type_desc = 'NONCLUSTERED';
 
 
 ```
