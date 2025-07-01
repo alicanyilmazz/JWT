@@ -413,7 +413,7 @@ END
 SELECT 
     i.name AS IndexName,
     i.is_unique AS IsUnique,
-    c.name AS ColumnName
+    STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) AS AllColumns
 FROM sys.indexes i
 INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
 INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
@@ -421,7 +421,11 @@ INNER JOIN sys.tables t ON i.object_id = t.object_id
 INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
 WHERE t.name = 'MESSAGE'
   AND s.name = 'LOG'
-ORDER BY i.name, ic.key_ordinal;
+GROUP BY i.name, i.is_unique
+HAVING 
+    SUM(CASE WHEN c.name = 'TRAN_CODE' THEN 1 ELSE 0 END) >= 1
+ORDER BY i.name;
+
 
 
 ```
