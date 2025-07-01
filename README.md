@@ -410,19 +410,22 @@ END
 ```
 ```SQL
 
-DECLARE @TableName NVARCHAR(128) = 'YourTableName'  -- Tablo adını yaz
-DECLARE @IndexName NVARCHAR(128) = 'YourIndexName'  -- Silmek istediğin index adını yaz
+DECLARE @SchemaName NVARCHAR(128) = 'dbo'  -- Şemanın adını buraya yaz
+DECLARE @TableName NVARCHAR(128) = 'YourTableName'  -- Tablo adını buraya yaz
+DECLARE @IndexName NVARCHAR(128) = 'YourIndexName'  -- Silmek istediğin index adını buraya yaz
 DECLARE @SQL NVARCHAR(MAX)
 
 IF EXISTS (
     SELECT 1
     FROM sys.indexes i
     INNER JOIN sys.tables t ON i.object_id = t.object_id
+    INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
     WHERE i.name = @IndexName
       AND t.name = @TableName
+      AND s.name = @SchemaName
 )
 BEGIN
-    SET @SQL = 'DROP INDEX [' + @IndexName + '] ON [' + @TableName + '];'
+    SET @SQL = 'DROP INDEX [' + @IndexName + '] ON [' + @SchemaName + '].[' + @TableName + '];'
     PRINT @SQL
     EXEC sp_executesql @SQL
 END
@@ -430,6 +433,7 @@ ELSE
 BEGIN
     PRINT 'Belirtilen index bulunamadı: ' + @IndexName
 END
+
 
 
 ```
