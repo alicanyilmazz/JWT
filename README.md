@@ -410,22 +410,35 @@ END
 ```
 ```SQL
 
-SELECT 
-    r.session_id,
-    r.blocking_session_id,
-    r.status,
+-- Önce tabloya ait object_id alınır
+DECLARE @TableName NVARCHAR(128) = 'SERVICE_URLS'
+DECLARE @ObjectId INT = OBJECT_ID(@TableName)
+
+SELECT
+    tl.request_session_id AS SessionId,
+    wt.blocking_session_id AS BlockingSessionId,
+    DB_NAME(tl.resource_database_id) AS DatabaseName,
+    o.name AS LockedTable,
+    tl.resource_type,
+    tl.request_mode,
+    tl.request_status,
+    r.status AS RequestStatus,
+    r.command,
     r.wait_type,
     r.wait_time,
-    r.wait_resource,
-    t.text AS running_query,
-    DB_NAME(s.database_id) AS database_name,
-    OBJECT_NAME(p.object_id) AS locked_table
-FROM sys.dm_exec_requests r
-JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
-JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
-OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
-LEFT JOIN sys.partitions p ON r.resource_associated_entity_id = p.hobt_id
-WHERE r.blocking_session_id <> 0 -- sadece engelleyen varsa göster
+    r.cpu_time,
+    r.total_elapsed_time,
+    s.host_name,
+    s.program_name,
+    s.login_name
+FROM sys.dm_tran_locks tl
+LEFT JOIN sys.partitions p ON p.hobt_id = tl.resource_associated_entity_id
+LEFT JOIN sys.objects o ON p.object_id = o.object_id
+LEFT JOIN sys.dm_exec_requests r ON tl.request_session_id = r.session_id
+LEFT JOIN sys.dm_exec_sessions s ON tl.request_session_id = s.session_id
+LEFT JOIN sys.dm_exec_requests wt ON tl.request_session_id = wt.session_id
+WHERE o.object_id = @ObjectId
+
 
 
 
