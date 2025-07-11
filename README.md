@@ -411,20 +411,22 @@ END
 ```SQL
 
 SELECT 
-    i.name AS IndexName,
-    i.is_unique AS IsUnique,
-    STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY ic.key_ordinal) AS AllColumns
-FROM sys.indexes i
-INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-INNER JOIN sys.tables t ON i.object_id = t.object_id
-INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE t.name = 'MESSAGE'
-  AND s.name = 'LOG'
-GROUP BY i.name, i.is_unique
-HAVING 
-    SUM(CASE WHEN c.name = 'TRAN_CODE' THEN 1 ELSE 0 END) >= 1
-ORDER BY i.name;
+    r.session_id,
+    r.blocking_session_id,
+    r.status,
+    r.wait_type,
+    r.wait_time,
+    r.wait_resource,
+    t.text AS running_query,
+    DB_NAME(s.database_id) AS database_name,
+    OBJECT_NAME(p.object_id) AS locked_table
+FROM sys.dm_exec_requests r
+JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
+OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
+LEFT JOIN sys.partitions p ON r.resource_associated_entity_id = p.hobt_id
+WHERE r.blocking_session_id <> 0 -- sadece engelleyen varsa göster
+
 
 
 
