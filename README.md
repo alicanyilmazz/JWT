@@ -409,36 +409,18 @@ END
         }
 ```
 ```SQL
-
--- Önce tabloya ait object_id alınır
-DECLARE @TableName NVARCHAR(128) = 'SERVICE_URLS'
-DECLARE @ObjectId INT = OBJECT_ID(@TableName)
-
-SELECT
-    tl.request_session_id AS SessionId,
-    wt.blocking_session_id AS BlockingSessionId,
-    DB_NAME(tl.resource_database_id) AS DatabaseName,
-    o.name AS LockedTable,
-    tl.resource_type,
-    tl.request_mode,
-    tl.request_status,
-    r.status AS RequestStatus,
-    r.command,
-    r.wait_type,
-    r.wait_time,
-    r.cpu_time,
-    r.total_elapsed_time,
-    s.host_name,
-    s.program_name,
-    s.login_name
-FROM sys.dm_tran_locks tl
-LEFT JOIN sys.partitions p ON p.hobt_id = tl.resource_associated_entity_id
-LEFT JOIN sys.objects o ON p.object_id = o.object_id
-LEFT JOIN sys.dm_exec_requests r ON tl.request_session_id = r.session_id
-LEFT JOIN sys.dm_exec_sessions s ON tl.request_session_id = s.session_id
-LEFT JOIN sys.dm_exec_requests wt ON tl.request_session_id = wt.session_id
-WHERE o.object_id = @ObjectId
-
+DECLARE @SearchValue NVARCHAR(100) = 'X';
+DECLARE @SQL NVARCHAR(MAX) = '';
+ 
+SELECT @SQL = STRING_AGG('
+IF EXISTS (SELECT 1 FROM [' + TABLE_SCHEMA + '].[' + TABLE_NAME + '] 
+            WHERE TRY_CAST([' + COLUMN_NAME + '] AS NVARCHAR(MAX)) = ''' + @SearchValue + ''')
+    PRINT ''' + TABLE_SCHEMA + '.' + TABLE_NAME + '''',
+    CHAR(13) + CHAR(10))
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE DATA_TYPE IN ('char', 'nchar', 'varchar', 'nvarchar', 'text', 'ntext');
+ 
+EXEC sp_executesql @SQL;
 
 
 
