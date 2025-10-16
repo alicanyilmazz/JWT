@@ -423,6 +423,18 @@ WHERE DATA_TYPE IN ('char', 'nchar', 'varchar', 'nvarchar', 'text', 'ntext');
 EXEC sp_executesql @SQL;
 
 
+# Admin olarak çalıştır
+%windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -lk
+# listede keyContainerName gör --> diyelim "NetFrameworkConfigurationKey"
+%windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -px "NetFrameworkConfigurationKey" "C:\temp\rsa-key.xml" -pri
 
+# Import
+%windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pi "NetFrameworkConfigurationKey" "C:\temp\rsa-key.xml"
+
+# AppPool'a izin ver (örnek MyAppPool)
+%windir%\Microsoft.NET\Framework64\v4.0.30319\aspnet_regiis.exe -pa "NetFrameworkConfigurationKey" "IIS APPPOOL\MyAppPool"
+
+# IIS restart veya apppool recycle
+iisreset
 
 ```
