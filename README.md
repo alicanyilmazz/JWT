@@ -768,3 +768,135 @@ API (ör.): [100,200,400,500] → 4
 Kaset: [100×5, 200×3, 500×2, 1000×2]
 Default: {100,200,500,1000}
 API (ör.): [100,300,600,1000,2000] → ≥4
+
+
+
+------------------------------------------------------------
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public static class ReplacementPipeline
+{
+    /// <summary>
+    /// API listesi rank'a göre şimdiden sıralı gelmiştir.
+    /// - Sadece IsDispensible==true API'ler işlenir.
+    /// - Her API, henüz kullanılmamış EN YAKIN (OriginalAmount'a göre) ENABLE predefined slotu replace eder.
+    /// - Eşit farkta OriginalAmount küçük olan, yine eşitlikte index küçük olan seçilir.
+    /// - In-place: slot.Amount = api.Amount; slot.IsReplaced = true; slot.AmountSource = AmountSource.Api
+    /// </summary>
+    public static void ReplaceWithApi_InGivenRankOrder(
+        List<PredefinedAmount> predefinedSlots,   // 4 slot: 100/200/500/1000 (OriginalAmount set)
+        IEnumerable<ApiAmount> apiInRankOrder     // ZATEN rank sıralı
+    )
+    {
+        if (predefinedSlots == null || predefinedSlots.Count != 4)
+            throw new InvalidOperationException("predefinedSlots 4 elemanlı olmalı (100,200,500,1000).");
+
+        var candidateIdx = Enumerable.Range(0, predefinedSlots.Count)
+                                     .Where(i => predefinedSlots[i].IsDispensible)
+                                     .ToList();
+        if (candidateIdx.Count == 0) return;
+
+        var used = new HashSet<int>();
+
+        foreach (var api in apiInRankOrder ?? Enumerable.Empty<ApiAmount>())
+        {
+            if (!api.IsDispensible) continue;
+
+            int? i = FindNearestEnabledFreePreSlot(predefinedSlots, candidateIdx, used, api.Amount);
+            if (i == null) continue;
+
+            var slot = predefinedSlots[i.Value];
+
+            // in-place replace
+            slot.Amount       = api.Amount;
+            slot.IsReplaced   = true;
+            slot.AmountSource = AmountSource.Api;
+
+            used.Add(i.Value);
+        }
+    }
+
+    /// <summary>
+    /// Kalan DISABLED & REPLACE EDİLMEMİŞ predefined slotları
+    /// en küçük dispensible unit (100/200/500/1000 içinden) KATLARI ile doldurur.
+    /// - Çakışma olursa bir SONRAKİ kat seçilir.
+    /// - Doldurulan slot: Amount=candidate, IsReplaced=true, AmountSource=Calculated, IsDispensible=true
+    /// </summary>
+    public static void FillDisabledWithCalculatedMultiples(List<PredefinedAmount> predefinedSlots)
+    {
+        if (predefinedSlots == null || predefinedSlots.Count != 4)
+            throw new InvalidOperationException("predefinedSlots 4 elemanlı olmalı.");
+
+        // 1) En küçük dispensible unit'i bul
+        var units = new[] { 100m, 200m, 500m, 1000m };
+        decimal? baseUnit = units.FirstOrDefault(u =>
+            Manager.IsAmountDispensible(u, predefinedSlots[0].CurrencyCode));
+
+        if (baseUnit == null || baseUnit == 0m) return; // dolduracak birim yok
+
+        // 2) Kullanılan buton değerleri (çakışmayı engelle)
+        var used = new HashSet<decimal>(predefinedSlots.Select(s => s.Amount));
+
+        // 3) Doldurulacak slotlar: disabled & replace edilmemiş
+        var toFill = predefinedSlots
+            .Where(s => !s.IsDispensible && !s.IsReplaced)
+            .OrderBy(s => s.OriginalAmount) // deterministik
+            .ToList();
+
+        foreach (var slot in toFill)
+        {
+            decimal candidate = baseUnit.Value;
+
+            while (true)
+            {
+                if (!used.Contains(candidate) &&
+                    Manager.IsAmountDispensible(candidate, slot.CurrencyCode))
+                {
+                    slot.Amount        = candidate;
+                    slot.IsReplaced    = true;
+                    slot.AmountSource  = AmountSource.Calculated;
+                    slot.IsDispensible = true;
+
+                    used.Add(candidate);
+                    break;
+                }
+
+                candidate += baseUnit.Value;
+                if (candidate > 100000m) break; // güvenlik
+            }
+        }
+    }
+
+    // === helpers ===
+    private static int? FindNearestEnabledFreePreSlot(
+        List<PredefinedAmount> predefined,
+        List<int> candidateIdx,
+        HashSet<int> used,
+        decimal target)
+    {
+        int? bestIndex = null;
+        decimal bestDiff = decimal.MaxValue;
+        decimal bestOrig = decimal.MaxValue;
+
+        foreach (var i in candidateIdx)
+        {
+            if (used.Contains(i)) continue;
+
+            var orig = predefined[i].OriginalAmount;
+            var diff = Math.Abs(orig - target);
+
+            if (diff < bestDiff
+                || (diff == bestDiff && orig < bestOrig)
+                || (diff == bestDiff && orig == bestOrig && (bestIndex == null || i < bestIndex.Value)))
+            {
+                bestDiff = diff;
+                bestOrig = orig;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+}
+
