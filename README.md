@@ -772,6 +772,7 @@ API (ör.): [100,300,600,1000,2000] → ≥4
 
 
 ------------------------------------------------------------
+```c#
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -942,5 +943,5 @@ public static class ButtonPlanner
         return predefined; // nihai 4 buton
     }
 }
-
+```
 
