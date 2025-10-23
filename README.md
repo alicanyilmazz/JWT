@@ -776,40 +776,55 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-public static class ReplacementPipeline
+// ==== 0) (Opsiyonel) Flag adımı ====
+// Sadece IsDispensible flag'ini set eder. Sıralama/filtre yok.
+public static class FlagHelper
+{
+    public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
+    {
+        if (items == null) return;
+        foreach (var it in items)
+        {
+            // CurrencyCode’un her öğede dolu olduğu varsayımıyla:
+            it.IsDispensible = Manager.IsAmountDispensible(it.Amount, it.CurrencyCode);
+        }
+    }
+}
+
+// ==== 1) API → en yakın enable predefined'a yerleştir (rank sırasıyla) ====
+public static class ApiReplace
 {
     /// <summary>
-    /// API listesi rank'a göre şimdiden sıralı gelmiştir.
+    /// - API listesi rank'a göre ZATEN sıralı.
     /// - Sadece IsDispensible==true API'ler işlenir.
-    /// - Her API, henüz kullanılmamış EN YAKIN (OriginalAmount'a göre) ENABLE predefined slotu replace eder.
-    /// - Eşit farkta OriginalAmount küçük olan, yine eşitlikte index küçük olan seçilir.
-    /// - In-place: slot.Amount = api.Amount; slot.IsReplaced = true; slot.AmountSource = AmountSource.Api
+    /// - Her API, henüz kullanılmamış EN YAKIN (OriginalAmount'a göre) ENABLE predefined slotunu alır.
+    /// - Eşitlik: küçük OriginalAmount → küçük indeks.
+    /// - In-place: slot.Amount = api.Amount; slot.IsReplaced = true; slot.AmountSource = Api
     /// </summary>
-    public static void ReplaceWithApi_InGivenRankOrder(
-        List<PredefinedAmount> predefinedSlots,   // 4 slot: 100/200/500/1000 (OriginalAmount set)
-        IEnumerable<ApiAmount> apiInRankOrder     // ZATEN rank sıralı
-    )
+    public static void ApplyApiReplacementsInRankOrder(
+        List<PredefinedAmount> slots,           // 4 slot (100,200,500,1000 olduğu biliniyor)
+        IEnumerable<ApiAmount> apiInRankOrder)  // rank'a göre sıralı geldi
     {
-        if (predefinedSlots == null || predefinedSlots.Count != 4)
-            throw new InvalidOperationException("predefinedSlots 4 elemanlı olmalı (100,200,500,1000).");
+        if (slots == null) return;
 
-        var candidateIdx = Enumerable.Range(0, predefinedSlots.Count)
-                                     .Where(i => predefinedSlots[i].IsDispensible)
+        // Replace edilebilir (enable) predefined slot indeksleri
+        var candidateIdx = Enumerable.Range(0, slots.Count)
+                                     .Where(i => slots[i].IsDispensible)
                                      .ToList();
         if (candidateIdx.Count == 0) return;
 
-        var used = new HashSet<int>();
+        var used = new HashSet<int>(); // bir enable slot 1 kez replace edilir
 
         foreach (var api in apiInRankOrder ?? Enumerable.Empty<ApiAmount>())
         {
             if (!api.IsDispensible) continue;
 
-            int? i = FindNearestEnabledFreePreSlot(predefinedSlots, candidateIdx, used, api.Amount);
+            int? i = FindNearestFreeSlot(slots, candidateIdx, used, api.Amount);
             if (i == null) continue;
 
-            var slot = predefinedSlots[i.Value];
+            var slot = slots[i.Value];
 
-            // in-place replace
+            // in-place değişim
             slot.Amount       = api.Amount;
             slot.IsReplaced   = true;
             slot.AmountSource = AmountSource.Api;
@@ -818,29 +833,60 @@ public static class ReplacementPipeline
         }
     }
 
-    /// <summary>
-    /// Kalan DISABLED & REPLACE EDİLMEMİŞ predefined slotları
-    /// en küçük dispensible unit (100/200/500/1000 içinden) KATLARI ile doldurur.
-    /// - Çakışma olursa bir SONRAKİ kat seçilir.
-    /// - Doldurulan slot: Amount=candidate, IsReplaced=true, AmountSource=Calculated, IsDispensible=true
-    /// </summary>
-    public static void FillDisabledWithCalculatedMultiples(List<PredefinedAmount> predefinedSlots)
+    private static int? FindNearestFreeSlot(
+        List<PredefinedAmount> slots,
+        List<int> candidateIdx,
+        HashSet<int> used,
+        decimal target)
     {
-        if (predefinedSlots == null || predefinedSlots.Count != 4)
-            throw new InvalidOperationException("predefinedSlots 4 elemanlı olmalı.");
+        int? bestIndex = null;
+        decimal bestDiff = decimal.MaxValue;
+        decimal bestOrig = decimal.MaxValue;
 
-        // 1) En küçük dispensible unit'i bul
+        foreach (var i in candidateIdx)
+        {
+            if (used.Contains(i)) continue;
+
+            var orig = slots[i].OriginalAmount;
+            var diff = Math.Abs(orig - target);
+
+            if (diff < bestDiff
+                || (diff == bestDiff && orig < bestOrig)
+                || (diff == bestDiff && orig == bestOrig && (bestIndex == null || i < bestIndex)))
+            {
+                bestDiff = diff;
+                bestOrig = orig;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+}
+
+// ==== 2) Kalan disabled slotları “en küçük dispensible unit” katlarıyla doldur ====
+public static class CalculatedFill
+{
+    /// <summary>
+    /// - Kalan DISABLED & REPLACED OLMAYAN slotlar, en küçük dispensible birimin (100/200/500/1000) katlarıyla doldurulur.
+    /// - Çakışma varsa bir SONRAKİ kat denenir.
+    /// - Başarılı doldurulan slot: Amount=k*unit, IsReplaced=true, AmountSource=Calculated, IsDispensible=true
+    /// </summary>
+    public static void FillDisabledSlotsWithMultiples(List<PredefinedAmount> slots)
+    {
+        if (slots == null) return;
+
+        // 1) En küçük dispensible unit'i bul (100,200,500,1000)
         var units = new[] { 100m, 200m, 500m, 1000m };
-        decimal? baseUnit = units.FirstOrDefault(u =>
-            Manager.IsAmountDispensible(u, predefinedSlots[0].CurrencyCode));
+        var currency = slots[0].CurrencyCode;
 
-        if (baseUnit == null || baseUnit == 0m) return; // dolduracak birim yok
+        decimal? baseUnit = units.FirstOrDefault(u => Manager.IsAmountDispensible(u, currency));
+        if (baseUnit == null || baseUnit == 0m) return;
 
-        // 2) Kullanılan buton değerleri (çakışmayı engelle)
-        var used = new HashSet<decimal>(predefinedSlots.Select(s => s.Amount));
+        // 2) Şu an butonlarda kullanılan değerleri topla (çakışmayı engelle)
+        var used = new HashSet<decimal>(slots.Select(s => s.Amount));
 
         // 3) Doldurulacak slotlar: disabled & replace edilmemiş
-        var toFill = predefinedSlots
+        var toFill = slots
             .Where(s => !s.IsDispensible && !s.IsReplaced)
             .OrderBy(s => s.OriginalAmount) // deterministik
             .ToList();
@@ -857,7 +903,7 @@ public static class ReplacementPipeline
                     slot.Amount        = candidate;
                     slot.IsReplaced    = true;
                     slot.AmountSource  = AmountSource.Calculated;
-                    slot.IsDispensible = true;
+                    slot.IsDispensible = true; // artık enable
 
                     used.Add(candidate);
                     break;
@@ -868,35 +914,33 @@ public static class ReplacementPipeline
             }
         }
     }
+}
 
-    // === helpers ===
-    private static int? FindNearestEnabledFreePreSlot(
-        List<PredefinedAmount> predefined,
-        List<int> candidateIdx,
-        HashSet<int> used,
-        decimal target)
+// ==== 3) Orkestrasyon (validasyon yok; 4 eleman olduğu garantili) ====
+public static class ButtonPlanner
+{
+    /// <summary>
+    /// 1) (Ops) Flag
+    /// 2) API → en yakın enable predefined'a replace
+    /// 3) Kalan disabled slotları katlarla doldur
+    /// 4) 4 slotu geri döndür (gelen sırayı korur)
+    /// </summary>
+    public static List<PredefinedAmount> PlanButtons(
+        List<PredefinedAmount> predefined,   // 4 slot (100,200,500,1000)
+        List<ApiAmount> apiInRankOrder,      // 0..6, rank'a göre sıralı
+        bool runFlagStep = true)
     {
-        int? bestIndex = null;
-        decimal bestDiff = decimal.MaxValue;
-        decimal bestOrig = decimal.MaxValue;
-
-        foreach (var i in candidateIdx)
+        if (runFlagStep)
         {
-            if (used.Contains(i)) continue;
-
-            var orig = predefined[i].OriginalAmount;
-            var diff = Math.Abs(orig - target);
-
-            if (diff < bestDiff
-                || (diff == bestDiff && orig < bestOrig)
-                || (diff == bestDiff && orig == bestOrig && (bestIndex == null || i < bestIndex.Value)))
-            {
-                bestDiff = diff;
-                bestOrig = orig;
-                bestIndex = i;
-            }
+            FlagHelper.FlagDispensibility(predefined);
+            FlagHelper.FlagDispensibility(apiInRankOrder);
         }
-        return bestIndex;
+
+        ApiReplace.ApplyApiReplacementsInRankOrder(predefined, apiInRankOrder);
+        CalculatedFill.FillDisabledSlotsWithMultiples(predefined);
+
+        return predefined; // nihai 4 buton
     }
 }
+
 
