@@ -379,204 +379,255 @@ iisreset
 
 ```c#
 
-0 API
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+#region Models (senin mevcut modellerinle birebir uyumlu)
+
+public enum AmountSource { Predefined, Api, Calculated }
+
+public abstract class BaseAmount
+{
+    public string  Index         { get; set; }   // "pre_1".."pre_4" | "api_1".."api_6" | "calc_n"
+    public string  CurrencyCode  { get; set; }
+    public decimal Amount        { get; set; }
+    public bool    IsDispensible { get; set; }
+
+    protected BaseAmount(string index, decimal amount, string currency)
+    { Index = index; Amount = amount; CurrencyCode = currency; }
+}
+
+public sealed class ApiAmount : BaseAmount
+{
+    public ApiAmount(string index, decimal amount, string currency)
+        : base(index, amount, currency) { }
+}
+
+public sealed class PredefinedAmount : BaseAmount
+{
+    public AmountSource AmountSource { get; set; } = AmountSource.Predefined;
+    public string ReplacedIndex { get; set; } = string.Empty; // "" | "api_i" | "calc_n"
+    public PredefinedAmount(string index, decimal amount, string currency)
+        : base(index, amount, currency) { }
+}
+
+#endregion
+
+#region Services / Strategies
+
+public interface IDispenseService
+{
+    bool IsDispensible(string currencyCode, decimal amount);
+}
+
+public sealed class ManagerDispenseService : IDispenseService
+{
+    public bool IsDispensible(string currencyCode, decimal amount)
+        => Manager.IsAmountDispensible(amount, currencyCode);
+}
+
+public interface IBaselineProvider
+{
+    decimal GetBaseline(string preIndex); // "pre_1" → 100, "pre_2" → 200 ...
+}
+
+// Plan başında snapshot alır: baseline = o anki Predefined.Amount (100/200/500/1000)
+public sealed class SnapshotBaselineProvider : IBaselineProvider
+{
+    private readonly IReadOnlyDictionary<string, decimal> _baseline;
+    public SnapshotBaselineProvider(IEnumerable<PredefinedAmount> predefined)
+    {
+        _baseline = predefined.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal);
+    }
+    public decimal GetBaseline(string preIndex) => _baseline[preIndex];
+}
+
+public static class FlagExtensions
+{
+    public static void FlagDispensibility<T>(this IEnumerable<T> items, IDispenseService svc) where T : BaseAmount
+    {
+        foreach (var x in items ?? Enumerable.Empty<T>())
+            x.IsDispensible = svc.IsDispensible(x.CurrencyCode, x.Amount);
+    }
+}
+
+public interface IApiReplacementStrategy
+{
+    void Apply(List<PredefinedAmount> slots, IEnumerable<ApiAmount> api, IBaselineProvider baseline);
+}
+
+public sealed class NearestEnableReplacementStrategy : IApiReplacementStrategy
+{
+    public void Apply(List<PredefinedAmount> slots, IEnumerable<ApiAmount> api, IBaselineProvider baseline)
+    {
+        if (slots == null || slots.Count != 4) return;
+
+        // enable & değişmemiş slot indeksleri
+        var candidateIdx = Enumerable.Range(0, slots.Count)
+            .Where(i => slots[i].IsDispensible && string.IsNullOrEmpty(slots[i].ReplacedIndex))
+            .ToList();
+
+        foreach (var a in (api ?? Enumerable.Empty<ApiAmount>()).Where(x => x.IsDispensible))
+        {
+            if (candidateIdx.Count == 0) break;
+
+            var bestIdx = candidateIdx
+                .Select(i => new { i, b = baseline.GetBaseline(slots[i].Index) })
+                .OrderBy(x => Math.Abs(x.b - a.Amount))
+                .ThenBy(x => x.b)
+                .ThenBy(x => x.i)
+                .Select(x => (int?)x.i)
+                .FirstOrDefault();
+
+            if (bestIdx is null) continue;
+
+            var s = slots[bestIdx.Value];
+            s.Amount        = a.Amount;
+            s.AmountSource  = AmountSource.Api;
+            s.ReplacedIndex = a.Index;
+            s.IsDispensible = true; // a zaten flag'li
+
+            candidateIdx.Remove(bestIdx.Value);
+        }
+    }
+}
+
+public interface IDisabledFillStrategy
+{
+    void Fill(List<PredefinedAmount> slots, IBaselineProvider baseline, IDispenseService svc, string calcPrefix = "calc_");
+}
+
+public sealed class SmallestUnitMultiplesFillStrategy : IDisabledFillStrategy
+{
+    private static readonly decimal[] Units = { 100m, 200m, 500m, 1000m };
+
+    public void Fill(List<PredefinedAmount> slots, IBaselineProvider baseline, IDispenseService svc, string calcPrefix = "calc_")
+    {
+        if (slots == null || slots.Count != 4) return;
+
+        var currency = slots.First().CurrencyCode;
+        var baseUnit = Units.FirstOrDefault(u => svc.IsDispensible(currency, u));
+        if (baseUnit == 0m) return;
+
+        var used = new HashSet<decimal>(slots.Select(s => s.Amount));
+
+        int calcNo = 1;
+        foreach (var slot in slots
+            .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+            .OrderBy(s => baseline.GetBaseline(s.Index)))
+        {
+            var cand = Enumerable.Range(1, 300)        // 1U, 2U, 3U, ...
+                .Select(k => baseUnit * k)
+                .FirstOrDefault(v => !used.Contains(v) && svc.IsDispensible(currency, v));
+
+            if (cand == 0m) continue;
+
+            slot.Amount        = cand;
+            slot.AmountSource  = AmountSource.Calculated;
+            slot.ReplacedIndex = $"{calcPrefix}{calcNo++}";
+            slot.IsDispensible = true;
+
+            used.Add(cand);
+        }
+    }
+}
+
+#endregion
+
+#region Orchestrator
+
+public sealed class ButtonPlanner
+{
+    private readonly IDispenseService _dispense;
+    private readonly IApiReplacementStrategy _replaceStrategy;
+    private readonly IDisabledFillStrategy _fillStrategy;
+
+    public ButtonPlanner(
+        IDispenseService dispense,
+        IApiReplacementStrategy replaceStrategy,
+        IDisabledFillStrategy fillStrategy)
+    {
+        _dispense = dispense;
+        _replaceStrategy = replaceStrategy;
+        _fillStrategy = fillStrategy;
+    }
+
+    /// <summary>
+    /// 1) Flag → 2) API replace → 3) Disabled fill (multiples) → 4) Slots geri döner
+    /// </summary>
+    public List<PredefinedAmount> Plan(List<PredefinedAmount> predefined4, List<ApiAmount> apiInOrder, bool runFlagStep = true)
+    {
+        if (predefined4 == null || predefined4.Count != 4) return predefined4 ?? new List<PredefinedAmount>();
+
+        // baseline snapshot
+        var baseline = new SnapshotBaselineProvider(predefined4);
+
+        if (runFlagStep)
+        {
+            predefined4.FlagDispensibility(_dispense);
+            (apiInOrder ?? Enumerable.Empty<ApiAmount>()).FlagDispensibility(_dispense);
+        }
+
+        _replaceStrategy.Apply(predefined4, apiInOrder, baseline);
+        _fillStrategy.Fill(predefined4, baseline, _dispense, "calc_");
+
+        return predefined4;
+    }
+
+    // UI için küçükten büyüğe sıralı görünüm istersen:
+    public sealed class ButtonView
+    {
+        public decimal Amount { get; init; }
+        public string CurrencyCode { get; init; }
+        public bool IsDispensible { get; init; }
+        public AmountSource Source { get; init; }
+        public string PreIndex { get; init; }
+        public string ReplacedIndex { get; init; }
+        public decimal Baseline { get; init; }
+    }
+
+    public List<ButtonView> BuildUiButtonsSorted(List<PredefinedAmount> slots, IBaselineProvider baseline)
+        => slots.Select(p => new ButtonView {
+                Amount        = p.Amount,
+                CurrencyCode  = p.CurrencyCode,
+                IsDispensible = p.IsDispensible,
+                Source        = p.AmountSource,
+                PreIndex      = p.Index,
+                ReplacedIndex = p.ReplacedIndex,
+                Baseline      = baseline.GetBaseline(p.Index)
+            })
+            .OrderBy(x => x.Amount)
+            .ThenBy(x => x.Baseline)
+            .ThenBy(x => x.PreIndex, StringComparer.Ordinal)
+            .ToList();
+}
+
+#endregion
+
+#region Usage (örnek)
+
+// kurulum
+// var predefined = new List<PredefinedAmount> {
+//     new PredefinedAmount("pre_1", 100,  "AED"),
+//     new PredefinedAmount("pre_2", 200,  "AED"),
+//     new PredefinedAmount("pre_3", 500,  "AED"),
+//     new PredefinedAmount("pre_4", 1000, "AED")
+// };
+// var api = new List<ApiAmount> {
+//     new ApiAmount("api_1", 700, "AED"),
+//     new ApiAmount("api_2", 300, "AED")
+// };
+// var planner = new ButtonPlanner(
+//     dispense:        new ManagerDispenseService(),
+//     replaceStrategy: new NearestEnableReplacementStrategy(),
+//     fillStrategy:    new SmallestUnitMultiplesFillStrategy()
+// );
+// var planned = planner.Plan(predefined, api, runFlagStep: true);
+// var ui = planner.BuildUiButtonsSorted(planned, new SnapshotBaselineProvider(predefined));
+
+#endregion
 
-(0,0) — Mümkün
-
-Kaset: [50×0, 100×0, 200×0, 500×0, 1000×0]
-
-Default: { } (0)
-
-API: [] veya [75,125] → { } (0)
-
-(0,1) — Mümkün
-
-Kaset: [50×0, 100×1, 200×0, 500×0, 1000×0]
-
-Default: {100}
-
-API: []
-
-(0,2) — Mümkün
-
-Kaset: [50×0, 100×0, 200×1, 500×1, 1000×0]
-
-Default: {200,500}
-
-API: []
-
-(0,3) — Mümkün
-
-Kaset: [50×0, 100×1, 200×1, 500×1, 1000×0]
-
-Default: {100,200,500}
-
-API: []
-
-(0,4) — Mümkün
-
-Kaset: [50×0, 100×2, 200×2, 500×1, 1000×0]
-
-Default: {100,200,500,1000} (1000 için 200+200+500=900; +100=1000 veya toplam ≥1000 sağlanır)
-
-API: []
-
-1 API
-
-(1,0) — Mümkün
-
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×0]
-
-Default: { }
-
-API: [50] → {50}
-
-(1,1) — Mümkün
-
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×1]
-
-Default: {1000}
-
-API: [50] → {50}
-
-(1,2) — Mümkün
-
-Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
-
-Default: {200,500}
-
-API: [50] → {50}
-
-(1,3) — Mümkün
-
-Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0]
-
-Default: {100,200,500}
-
-API: [50] → {50}
-
-(1,4) — Mümkün
-
-Kaset: [50×1, 100×2, 200×2, 500×1, 1000×0]
-
-Default: {100,200,500,1000}
-
-API: [50] → {50}
-
-2 API
-
-(2,0) — İmkânsız
-
-Gerekçe: Default=0 demek küçük toplamlarla 100 bile karşılanamıyor; aynı stokla 2 farklı API tutarını sağlamak mantıksal olarak mümkün değil (örnekler IsAmountDispensible kuralı altında).
-
-(2,1) — Mümkün
-
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×2]
-
-Default: {1000}
-
-API: [50, 1000] → {50,1000}
-
-(2,2) — Mümkün
-
-Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
-
-Default: {200,500}
-
-API: [50, 500] → {50,500}
-
-(2,3) — Mümkün
-
-Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0]
-
-Default: {100,200,500}
-
-API: [50, 150] → {50,150} (150 için 100+50)
-
-(2,4) — Mümkün
-
-Kaset: [50×1, 100×2, 200×2, 500×1, 1000×0]
-
-Default: {100,200,500,1000}
-
-API: [600, 1000] → {600,1000} (600 için 200+200+100+100; 1000 için toplam ≥1000)
-
-3 API
-
-(3,0) — İmkânsız
-
-Gerekçe: Default=0 kısıtı varken (küçük toplam) 3 farklı API tutarını sağlamak mümkün değil.
-
-(3,1) — Mümkün
-
-Kaset: [50×0, 100×0, 200×0, 500×0, 1000×3]
-
-Default: {1000}
-
-API: [1000, 2000, 3000] → {1000,2000,3000}
-
-(3,2) — Mümkün
-
-Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
-
-Default: {200,500}
-
-API: [50, 200, 500] → {50,200,500}
-
-(3,3) — Mümkün
-
-Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0]
-
-Default: {100,200,500}
-
-API: [50, 200, 500] → {50,200,500}
-
-(3,4) — Mümkün
-
-Kaset: [50×1, 100×2, 200×2, 500×1, 1000×1]
-
-Default: {100,200,500,1000}
-
-API: [50, 1000, 2000] → {50,1000,2000}
-
-≥4 API
-
-(≥4,0) — İmkânsız
-
-Gerekçe: Default=0 (çok düşük toplam) iken 4+ farklı API tutarı sağlamak mümkün değil.
-
-(≥4,1) — Mümkün
-
-Kaset: [50×0, 100×0, 200×0, 500×0, 1000×5]
-
-Default: {1000}
-
-API: [1000,2000,3000,4000,5000] → 5 adet (≥4)
-
-(≥4,2) — Mümkün
-
-Kaset: [50×0, 100×1, 200×0, 500×0, 1000×4]
-
-Default: {100,1000}
-
-API: [1000,2000,3000,4000,100] → 5 adet (≥4)
-
-(≥4,3) — Mümkün
-
-Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0]
-
-Default: {100,200,500}
-
-API: [50,100,150,200,250] → 5 adet (≥4)
-(150 = 100+50, 250 = 200+50; 1000 mümkün değil)
-
-(≥4,4) — Mümkün
-
-Kaset: [50×2, 100×3, 200×2, 500×2, 1000×2]
-
-Default: {100,200,500,1000}
-
-API: [50,100,150,200,600,700,1000,2000] → 8 adet (≥4)
 
 ```
 ------------------------------------------------------------
