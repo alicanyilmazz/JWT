@@ -777,171 +777,169 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-// ==== 0) (Opsiyonel) Flag adımı ====
-// Sadece IsDispensible flag'ini set eder. Sıralama/filtre yok.
-public static class FlagHelper
+#region Models
+
+public enum AmountSource { Predefined, Api, Calculated }
+
+public abstract class BaseAmount
 {
-    public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
+    public string  Index { get; set; }        // örn: "100", "200", "500", "1000" veya "API-1"
+    public string  CurrencyCode { get; set; }
+    public decimal Amount { get; set; }
+    public bool    IsDispensible { get; set; } // FlagDispensibility ile set edilir
+
+    protected BaseAmount(string index, decimal amount, string currency)
     {
-        if (items == null) return;
-        foreach (var it in items)
-        {
-            // CurrencyCode’un her öğede dolu olduğu varsayımıyla:
-            it.IsDispensible = Manager.IsAmountDispensible(it.Amount, it.CurrencyCode);
-        }
+        Index = index;
+        Amount = amount;
+        CurrencyCode = currency;
     }
 }
 
-// ==== 1) API → en yakın enable predefined'a yerleştir (rank sırasıyla) ====
-public static class ApiReplace
+public sealed class ApiAmount : BaseAmount
 {
-    /// <summary>
-    /// - API listesi rank'a göre ZATEN sıralı.
-    /// - Sadece IsDispensible==true API'ler işlenir.
-    /// - Her API, henüz kullanılmamış EN YAKIN (OriginalAmount'a göre) ENABLE predefined slotunu alır.
-    /// - Eşitlik: küçük OriginalAmount → küçük indeks.
-    /// - In-place: slot.Amount = api.Amount; slot.IsReplaced = true; slot.AmountSource = Api
-    /// </summary>
-    public static void ApplyApiReplacementsInRankOrder(
-        List<PredefinedAmount> slots,           // 4 slot (100,200,500,1000 olduğu biliniyor)
-        IEnumerable<ApiAmount> apiInRankOrder)  // rank'a göre sıralı geldi
-    {
-        if (slots == null) return;
+    public int Rank { get; set; } // küçük olan önce
+    public ApiAmount(string index, decimal amount, int rank, string currency)
+        : base(index, amount, currency) => Rank = rank;
+}
 
-        // Replace edilebilir (enable) predefined slot indeksleri
-        var candidateIdx = Enumerable.Range(0, slots.Count)
-                                     .Where(i => slots[i].IsDispensible)
+public sealed class PredefinedAmount : BaseAmount
+{
+    public AmountSource AmountSource { get; set; } = AmountSource.Predefined;
+
+    /// <summary> Değiştirildiyse: API'nin Index'i veya "CALC-<tutar>". Boşsa replace edilmemiştir. </summary>
+    public string ReplacedIndex { get; set; } = string.Empty;
+
+    public PredefinedAmount(string index, decimal amount, string currency)
+        : base(index, amount, currency) {}
+}
+
+#endregion
+
+public static class AtmButtonPlanner
+{
+    // ---- 1) Flag (maxCap kuralıyla) ----
+    public static void FlagDispensibility<T>(IEnumerable<T> items, decimal maxCap) where T : BaseAmount
+    {
+        if (items == null) return;
+        foreach (var x in items)
+            x.IsDispensible = (x.Amount <= maxCap) && Manager.IsAmountDispensible(x.Amount, x.CurrencyCode);
+    }
+
+    // ---- 2) API → en yakın ENABLE predefined’a yerleştir (rank sırası zaten hazır) ----
+    public static void ApplyApiReplacementsInRankOrder(List<PredefinedAmount> slots, IEnumerable<ApiAmount> apiInRankOrder)
+    {
+        if (slots == null || slots.Count != 4) return;
+
+        var candidateIdx = Enumerable.Range(0, 4)
+                                     .Where(i => slots[i].IsDispensible && string.IsNullOrEmpty(slots[i].ReplacedIndex))
                                      .ToList();
         if (candidateIdx.Count == 0) return;
 
-        var used = new HashSet<int>(); // bir enable slot 1 kez replace edilir
+        var used = new HashSet<int>();
 
         foreach (var api in apiInRankOrder ?? Enumerable.Empty<ApiAmount>())
         {
             if (!api.IsDispensible) continue;
 
-            int? i = FindNearestFreeSlot(slots, candidateIdx, used, api.Amount);
-            if (i == null) continue;
+            int? best = null;
+            decimal bestDiff = decimal.MaxValue;
+            decimal bestBaseline = decimal.MaxValue;
 
-            var slot = slots[i.Value];
-
-            // in-place değişim
-            slot.Amount       = api.Amount;
-            slot.IsReplaced   = true;
-            slot.AmountSource = AmountSource.Api;
-
-            used.Add(i.Value);
-        }
-    }
-
-    private static int? FindNearestFreeSlot(
-        List<PredefinedAmount> slots,
-        List<int> candidateIdx,
-        HashSet<int> used,
-        decimal target)
-    {
-        int? bestIndex = null;
-        decimal bestDiff = decimal.MaxValue;
-        decimal bestOrig = decimal.MaxValue;
-
-        foreach (var i in candidateIdx)
-        {
-            if (used.Contains(i)) continue;
-
-            var orig = slots[i].OriginalAmount;
-            var diff = Math.Abs(orig - target);
-
-            if (diff < bestDiff
-                || (diff == bestDiff && orig < bestOrig)
-                || (diff == bestDiff && orig == bestOrig && (bestIndex == null || i < bestIndex)))
+            foreach (var i in candidateIdx)
             {
-                bestDiff = diff;
-                bestOrig = orig;
-                bestIndex = i;
+                if (used.Contains(i)) continue;
+
+                var baseline = ParseBaseline(slots[i].Index);           // "500" -> 500
+                var diff     = Math.Abs(baseline - api.Amount);
+
+                if (diff < bestDiff
+                    || (diff == bestDiff && baseline < bestBaseline)
+                    || (diff == bestDiff && baseline == bestBaseline && (best == null || i < best)))
+                {
+                    best = i; bestDiff = diff; bestBaseline = baseline;
+                }
             }
+
+            if (best == null) continue;
+
+            var slot = slots[best.Value];
+            slot.Amount        = api.Amount;
+            slot.AmountSource  = AmountSource.Api;
+            slot.ReplacedIndex = api.Index;       // API’nin Index’i kaydedilir
+            slot.IsDispensible = true;            // API zaten flag’liydi
+
+            used.Add(best.Value);
         }
-        return bestIndex;
     }
-}
 
-// ==== 2) Kalan disabled slotları “en küçük dispensible unit” katlarıyla doldur ====
-public static class CalculatedFill
-{
-    /// <summary>
-    /// - Kalan DISABLED & REPLACED OLMAYAN slotlar, en küçük dispensible birimin (100/200/500/1000) katlarıyla doldurulur.
-    /// - Çakışma varsa bir SONRAKİ kat denenir.
-    /// - Başarılı doldurulan slot: Amount=k*unit, IsReplaced=true, AmountSource=Calculated, IsDispensible=true
-    /// </summary>
-    public static void FillDisabledSlotsWithMultiples(List<PredefinedAmount> slots)
+    // ---- 3) Kalan disabled slotları “en küçük dispensible unit” katlarıyla doldur (<= maxCap) ----
+    public static void FillDisabledSlotsWithMultiples(List<PredefinedAmount> slots, decimal maxCap)
     {
-        if (slots == null) return;
+        if (slots == null || slots.Count != 4) return;
 
-        // 1) En küçük dispensible unit'i bul (100,200,500,1000)
         var units = new[] { 100m, 200m, 500m, 1000m };
-        var currency = slots[0].CurrencyCode;
+        var cur   = slots[0].CurrencyCode;
 
-        decimal? baseUnit = units.FirstOrDefault(u => Manager.IsAmountDispensible(u, currency));
-        if (baseUnit == null || baseUnit == 0m) return;
+        // En küçük dispensible unit (ve cap'i aşmamalı)
+        var baseUnit = units.FirstOrDefault(u => u <= maxCap && Manager.IsAmountDispensible(u, cur));
+        if (baseUnit == 0m) return;
 
-        // 2) Şu an butonlarda kullanılan değerleri topla (çakışmayı engelle)
-        var used = new HashSet<decimal>(slots.Select(s => s.Amount));
+        // Çakışmayı engelle: mevcut buton değerleri
+        var usedAmounts = new HashSet<decimal>(slots.Select(s => s.Amount));
 
-        // 3) Doldurulacak slotlar: disabled & replace edilmemiş
-        var toFill = slots
-            .Where(s => !s.IsDispensible && !s.IsReplaced)
-            .OrderBy(s => s.OriginalAmount) // deterministik
-            .ToList();
+        // Doldurulacak slotlar: disabled ve replace edilmemiş
+        var toFill = slots.Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+                          .OrderBy(s => ParseBaseline(s.Index)) // deterministik: 100-200-500-1000
+                          .ToList();
 
         foreach (var slot in toFill)
         {
-            decimal candidate = baseUnit.Value;
+            decimal cand = baseUnit;
 
-            while (true)
+            for (int k = 0; k < 300 && cand <= maxCap; k++, cand += baseUnit)
             {
-                if (!used.Contains(candidate) &&
-                    Manager.IsAmountDispensible(candidate, slot.CurrencyCode))
-                {
-                    slot.Amount        = candidate;
-                    slot.IsReplaced    = true;
-                    slot.AmountSource  = AmountSource.Calculated;
-                    slot.IsDispensible = true; // artık enable
+                if (usedAmounts.Contains(cand)) continue;
+                if (!Manager.IsAmountDispensible(cand, cur)) continue;
 
-                    used.Add(candidate);
-                    break;
-                }
+                slot.Amount        = cand;
+                slot.AmountSource  = AmountSource.Calculated;
+                slot.ReplacedIndex = $"CALC-{cand}";
+                slot.IsDispensible = true;
 
-                candidate += baseUnit.Value;
-                if (candidate > 100000m) break; // güvenlik
+                usedAmounts.Add(cand);
+                break;
             }
         }
     }
-}
 
-// ==== 3) Orkestrasyon (validasyon yok; 4 eleman olduğu garantili) ====
-public static class ButtonPlanner
-{
-    /// <summary>
-    /// 1) (Ops) Flag
-    /// 2) API → en yakın enable predefined'a replace
-    /// 3) Kalan disabled slotları katlarla doldur
-    /// 4) 4 slotu geri döndür (gelen sırayı korur)
-    /// </summary>
-    public static List<PredefinedAmount> PlanButtons(
-        List<PredefinedAmount> predefined,   // 4 slot (100,200,500,1000)
-        List<ApiAmount> apiInRankOrder,      // 0..6, rank'a göre sıralı
+    // ---- 4) Orkestrasyon ----
+    public static List<PredefinedAmount> Plan(
+        List<PredefinedAmount> predefined4,   // 4 slot, Index’ler "100","200","500","1000" olursa süper
+        List<ApiAmount> apiInRankOrder,       // 0..6, rank’a göre sıralı
+        decimal maxCap,
         bool runFlagStep = true)
     {
         if (runFlagStep)
         {
-            FlagHelper.FlagDispensibility(predefined);
-            FlagHelper.FlagDispensibility(apiInRankOrder);
+            FlagDispensibility(predefined4, maxCap);
+            FlagDispensibility(apiInRankOrder, maxCap);
         }
 
-        ApiReplace.ApplyApiReplacementsInRankOrder(predefined, apiInRankOrder);
-        CalculatedFill.FillDisabledSlotsWithMultiples(predefined);
+        ApplyApiReplacementsInRankOrder(predefined4, apiInRankOrder);
+        FillDisabledSlotsWithMultiples(predefined4, maxCap);
 
-        return predefined; // nihai 4 buton
+        return predefined4; // nihai 4 buton
+    }
+
+    // --- küçük yardımcı: Index içinden baseline sayıyı çek (örn. "100" -> 100; "S100" -> 100) ---
+    private static decimal ParseBaseline(string index)
+    {
+        if (decimal.TryParse(index, out var v)) return v;
+        var digits = new string((index ?? string.Empty).Where(char.IsDigit).ToArray());
+        return decimal.TryParse(digits, out v) ? v : 0m;
     }
 }
+
 ```
 
