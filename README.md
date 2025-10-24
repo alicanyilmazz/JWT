@@ -438,7 +438,6 @@ EXEC sp_executesql @SQL;
 iisreset
 
 ```
-
 0 API
 
 (0,0) — Mümkün
@@ -451,33 +450,33 @@ API: [] veya [75,125] → { } (0)
 
 (0,1) — Mümkün
 
-Kaset: [50×0, 100×1, 200×0, 500×0, 1000×0] (100)
+Kaset: [50×0, 100×1, 200×0, 500×0, 1000×0]
 
-Default: {100} (1)
+Default: {100}
 
 API: []
 
 (0,2) — Mümkün
 
-Kaset: [50×0, 100×0, 200×1, 500×1, 1000×0] (200, 500; 1000 için 200+500=700<1000)
+Kaset: [50×0, 100×0, 200×1, 500×1, 1000×0]
 
-Default: {200,500} (2)
+Default: {200,500}
 
 API: []
 
 (0,3) — Mümkün
 
-Kaset: [50×0, 100×1, 200×1, 500×1, 1000×0] (100,200,500; 1000 için toplam 800<1000)
+Kaset: [50×0, 100×1, 200×1, 500×1, 1000×0]
 
-Default: {100,200,500} (3)
+Default: {100,200,500}
 
 API: []
 
 (0,4) — Mümkün
 
-Kaset: [50×0, 100×2, 200×2, 500×1, 1000×0] (1000 için 200+400+500=1100≥1000)
+Kaset: [50×0, 100×2, 200×2, 500×1, 1000×0]
 
-Default: {100,200,500,1000} (4)
+Default: {100,200,500,1000} (1000 için 200+200+500=900; +100=1000 veya toplam ≥1000 sağlanır)
 
 API: []
 
@@ -485,159 +484,156 @@ API: []
 
 (1,0) — Mümkün
 
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×0] (toplam 50; hiçbir default tutarı karşılanmaz)
+Kaset: [50×1, 100×0, 200×0, 500×0, 1000×0]
 
-Default: { } (0)
+Default: { }
 
-API: [50(r1)] → {50} (1)
+API: [50] → {50}
 
 (1,1) — Mümkün
 
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×1] (default: sadece 1000)
+Kaset: [50×1, 100×0, 200×0, 500×0, 1000×1]
 
-Default: {1000} (1)
+Default: {1000}
 
-API: [50(r1)] → {50} (1)
+API: [50] → {50}
 
 (1,2) — Mümkün
 
-Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0] (default: 200,500)
+Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
 
-Default: {200,500} (2)
+Default: {200,500}
 
-API: [50(r1)] → {50} (1)
+API: [50] → {50}
 
 (1,3) — Mümkün
 
-Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0] (default: 100,200,500; 1000 için 50+100+200+500=850<1000)
+Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0]
 
-Default: {100,200,500} (3)
+Default: {100,200,500}
 
-API: [50(r1)] → {50} (1)
+API: [50] → {50}
 
 (1,4) — Mümkün
 
-Kaset: [50×1, 100×2, 200×2, 500×1, 1000×0] (tüm default’lar)
+Kaset: [50×1, 100×2, 200×2, 500×1, 1000×0]
 
-Default: {100,200,500,1000} (4)
+Default: {100,200,500,1000}
 
-API: [50(r1)] → {50} (1)
+API: [50] → {50}
 
 2 API
 
 (2,0) — İmkânsız
 
-Gerekçe: Default=0 demek özellikle 100 için 50/100 toplamının <100 olması gerekir. Bu koşul altında aynı kasetlerle iki farklı API tutarını karşılamak mümkün değil.
+Gerekçe: Default=0 demek küçük toplamlarla 100 bile karşılanamıyor; aynı stokla 2 farklı API tutarını sağlamak mantıksal olarak mümkün değil (örnekler IsAmountDispensible kuralı altında).
 
 (2,1) — Mümkün
 
-Kaset: [50×1, 100×0, 200×0, 500×0, 1000×2] (default: sadece 1000)
+Kaset: [50×1, 100×0, 200×0, 500×0, 1000×2]
 
-Default: {1000} (1)
+Default: {1000}
 
-API: [50(r1), 1000(r2)] → {50,1000} (2)
+API: [50, 1000] → {50,1000}
 
 (2,2) — Mümkün
 
 Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
 
-Default: {200,500} (2)
+Default: {200,500}
 
-API: [50(r1), 500(r2)] → {50,500} (2)
+API: [50, 500] → {50,500}
 
 (2,3) — Mümkün
 
-Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0] (50 toplam=150; 1000 için 150+100+200+500=950<1000)
+Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0]
 
-Default: {100,200,500} (3)
+Default: {100,200,500}
 
-API: [50(r1), 150(r2)] → {50,150} (2)
+API: [50, 150] → {50,150} (150 için 100+50)
 
 (2,4) — Mümkün
 
 Kaset: [50×1, 100×2, 200×2, 500×1, 1000×0]
 
-Default: {100,200,500,1000} (4)
+Default: {100,200,500,1000}
 
-API: [600(r1), 1000(r2)] → {600,1000} (2)
-
-600 için 50+100+200 toplamı = 50 + 200 + 400 = 650 ≥ 600
+API: [600, 1000] → {600,1000} (600 için 200+200+100+100; 1000 için toplam ≥1000)
 
 3 API
 
 (3,0) — İmkânsız
 
-Gerekçe: Default=0 kısıtı varken (özellikle 100 için 50/100 toplamı <100), üç farklı API tutarı sağlamak mümkün değil.
+Gerekçe: Default=0 kısıtı varken (küçük toplam) 3 farklı API tutarını sağlamak mümkün değil.
 
 (3,1) — Mümkün
 
-Kaset: [50×0, 100×0, 200×0, 500×0, 1000×3] (default: sadece 1000)
+Kaset: [50×0, 100×0, 200×0, 500×0, 1000×3]
 
-Default: {1000} (1)
+Default: {1000}
 
-API: [1000(r1), 2000(r2), 3000(r3)] → {1000,2000,3000} (3)
+API: [1000, 2000, 3000] → {1000,2000,3000}
 
 (3,2) — Mümkün
 
-Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0] (default: 200,500)
+Kaset: [50×1, 100×0, 200×1, 500×1, 1000×0]
 
-Default: {200,500} (2)
+Default: {200,500}
 
-API: [50(r1), 200(r2), 500(r3)] → {50,200,500} (3)
+API: [50, 200, 500] → {50,200,500}
 
 (3,3) — Mümkün
 
-Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0] (1000 için toplam 950<1000)
+Kaset: [50×3, 100×1, 200×1, 500×1, 1000×0]
 
-Default: {100,200,500} (3)
+Default: {100,200,500}
 
-API: [50(r1), 200(r2), 500(r3)] → {50,200,500} (3)
+API: [50, 200, 500] → {50,200,500}
 
 (3,4) — Mümkün
 
 Kaset: [50×1, 100×2, 200×2, 500×1, 1000×1]
 
-Default: {100,200,500,1000} (4)
+Default: {100,200,500,1000}
 
-API: [50(r1), 1000(r2), 2000(r3)] → {50,1000,2000} (3)
+API: [50, 1000, 2000] → {50,1000,2000}
 
 ≥4 API
 
 (≥4,0) — İmkânsız
 
-Gerekçe: Default=0 için düşük toplam değer kısıtı altında 4+ farklı API tutarını sağlamak mümkün değil (en küçük default olan 100’ü dahi karşılamamak gerekir).
+Gerekçe: Default=0 (çok düşük toplam) iken 4+ farklı API tutarı sağlamak mümkün değil.
 
 (≥4,1) — Mümkün
 
-Kaset: [50×0, 100×0, 200×0, 500×0, 1000×5] (default: sadece 1000)
+Kaset: [50×0, 100×0, 200×0, 500×0, 1000×5]
 
-Default: {1000} (1)
+Default: {1000}
 
 API: [1000,2000,3000,4000,5000] → 5 adet (≥4)
 
 (≥4,2) — Mümkün
 
-Kaset: [50×0, 100×1, 200×0, 500×0, 1000×4] (default: 100 ve 1000)
+Kaset: [50×0, 100×1, 200×0, 500×0, 1000×4]
 
-Default: {100,1000} (2)
+Default: {100,1000}
 
 API: [1000,2000,3000,4000,100] → 5 adet (≥4)
 
 (≥4,3) — Mümkün
 
-Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0] (1000 için toplam 850<1000)
+Kaset: [50×1, 100×1, 200×1, 500×1, 1000×0]
 
-Default: {100,200,500} (3)
+Default: {100,200,500}
 
 API: [50,100,150,200,250] → 5 adet (≥4)
-
-150 ve 250 için 50+100 toplamı yeterli olmak zorunda; örnekte 50×1 (50), 100×1 (100) ⇒ 150’ye yetiyor; 250 için 50+100=150 yetmez; istersen 50×2 yap: 50×2, 100×1, 200×1, 500×1 ⇒ 1000 toplamı yine <1000 (2×50 + 100 + 200 + 500 = 900)
+(150 = 100+50, 250 = 200+50; 1000 mümkün değil)
 
 (≥4,4) — Mümkün
 
-Kaset: [50×2, 100×3, 200×2, 500×2, 1000×2] (rahat kapasite)
+Kaset: [50×2, 100×3, 200×2, 500×2, 1000×2]
 
-Default: {100,200,500,1000} (4)
+Default: {100,200,500,1000}
 
 API: [50,100,150,200,600,700,1000,2000] → 8 adet (≥4)
 
