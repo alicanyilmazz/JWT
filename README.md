@@ -23,132 +23,70 @@ E.) Furthermore, in the MiniAPI3 project, in addition to the Generic Repository,
 #### Version 1 
 ```c#
 
- public class MultistagedTransactionImageSaveService : IImageServerSaveService
- {
-        private const int ThumbnailWidth = 300;
-        private const int FullScreenWidth = 1000;
+ public static bool CheckCdmCassettesForDispense(AtmDeviceType deviceType, decimal amount, string currencyCode)
+{
+    if (amount <= 0) return false;
+    if (amount != Math.Truncate(amount)) return false; // banknotlar tam sayı varsayımı
 
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IRepository<ImageFileInformation> _repository;
-        public MultistagedTransactionImageSaveService(IUnitOfWork unitOfWork, IRepository<ImageFileInformation> repository)
+    // CDM cihazlarındaki kasetleri topla
+    var cdmCassettes = Diagnostic.Diagnostics.Values
+        .OfType<CdmDevice>()
+        .SelectMany(d => d.Cassettes.Values)
+        .Where(c =>
+            c.CassetteType.Equals(deviceType.ToString(), StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
+            c.Status < 4 &&
+            c.BanknoteType > 0 &&
+            c.CurrentCount > 0);
+
+    // Aynı kupürü (BanknoteType) birleştir → toplam adet
+    var groups = cdmCassettes
+        .GroupBy(c => c.BanknoteType)
+        .Select(g => new
         {
-            _unitOfWork = unitOfWork;
-            _repository = repository;
-        }
-        public async Task<Response<NoDataDto>> SaveAsync(IEnumerable<ImageDbServiceRequest> images, string directory)
+            Denom = (int)g.Key,                 // 10, 20, 50, 100, ...
+            Count = g.Sum(x => x.CurrentCount)  // o kupürden toplam kaç adet var
+        })
+        .Where(x => x.Denom > 0)
+        .OrderByDescending(x => x.Denom)       // sıralama şart değil ama zarar da vermez
+        .ToList();
+
+    // Hedefi int'e çevir (tam-sayı banknot varsayımı)
+    int target = (int)amount;
+
+    // Bounded coin change (O(denom_sayısı * amount)):
+    // dp[s] >= 0  ise s tutarına ulaşılabiliyor ve dp[s], şu anki kupürden kalan kullanma hakkı
+    // dp[s] == -1 ise s tutarına şu ana kadar ulaşılamıyor
+    var dp = Enumerable.Repeat(-1, target + 1).ToArray();
+    dp[0] = 0;
+
+    foreach (var g in groups)
+    {
+        int w = g.Denom;
+        int c = Math.Min(g.Count, target / w); // gereksiz fazla adedi kırp
+
+        for (int s = 0; s <= target; s++)
         {
-            var imageStorage = new ConcurrentDictionary<string, ImageFile>();
-            var imageDetailStorage = new ConcurrentDictionary<string, ImageFileDetail>();
-            var totalImages = await _repository.CountAsync();
-            var tasks = images.Select(image => Task.Run(async () =>
+            if (dp[s] >= 0)
             {
-                try
-                {
-                    using var imageResult = await Image.LoadAsync(image.Content);
-
-                    var id = Guid.NewGuid();
-                    var path = $"/images/{totalImages % 1000}/";
-                    var name = $"{id}.jpg";
-
-                    var storagePath = Path.Combine(directory, $"wwwroot{path}".Replace("/", "\\"));
-
-                    if (!Directory.Exists(storagePath))
-                    {
-                        Directory.CreateDirectory(storagePath);
-                    }
-                    List<Task<SaveImageAsycnResult>> task = new List<Task<SaveImageAsycnResult>>
-                    {
-                        SaveImageAsync(imageResult, $"Original_{name}", storagePath, imageResult.Width),
-                        SaveImageAsync(imageResult, $"FullScreen_{name}", storagePath, FullScreenWidth),
-                        SaveImageAsync(imageResult, $"Thumbnail_{name}", storagePath, ThumbnailWidth)
-                    };
-
-                    await Task.WhenAll(task);
-                    foreach (var item in task)
-                    {
-                        if (item.Result.isSuccess)
-                        {
-                            imageDetailStorage.TryAdd(item.Result.Type, new ImageFileDetail()
-                            {
-                                ImageId = id,
-                                Type = item.Result.Type,
-                            });
-                        }
-                    }
-
-                    imageStorage.TryAdd(image.Name, new ImageFile()
-                    {
-                        ImageId = id,
-                        Folder = path,
-                        Extension = "jpg"
-                    });
-                }
-                catch (Exception)
-                {
-                    // Log
-                    throw;
-                }
-            })).ToList();
-
-            try
-            {
-                await Task.WhenAll(tasks);
-                var file = new ImageFileInformation();
-                foreach (var image in imageStorage)
-                {
-                    file.ImageId = image.Value.ImageId;
-                    file.Folder= image.Value.Folder;
-                    file.Extension = image.Value.Extension;
-                    //await _repository.SaveImagesToImageFile(image.Value);
-                }
-                foreach (var image in imageDetailStorage)
-                {   
-                    file.Type.Add(image.Value.Type);
-                    //await _repository.SaveImagesToImageFileDetail(image.Value);
-                }
-                await _repository.SaveImagesServerData(file);
-                //await _repository.SaveImagesToImageFile(image.Value);
-                //await _repository.CommitAsync();
+                // s zaten yapılabiliyor; bu kupürden c adet hakkımız var
+                dp[s] = c;
             }
-            catch (Exception e)
+            else if (s >= w && dp[s - w] > 0)
             {
-                return Response<NoDataDto>.Fail(e.Message, 404, true);
+                // s-w yapılabiliyorsa ve oradan bu kupürden en az 1 hakkımız kalmışsa
+                dp[s] = dp[s - w] - 1;
             }
-            return Response<NoDataDto>.Success(200);
+            else
+            {
+                dp[s] = -1;
+            }
         }
+    }
 
-        private async Task<SaveImageAsycnResult> SaveImageAsync(Image image, string name, string path, int resizeWidth)
-        {
-            try
-            {
-                var width = image.Width;
-                var height = image.Height;
-                if (width > resizeWidth)
-                {
-                    height = (int)(double)(resizeWidth / width * height);
-                    width = resizeWidth;
-                }
-                image.Mutate(x => x.Resize(new Size(width, height)));
-                image.Metadata.ExifProfile = null;
-                await image.SaveAsJpegAsync($"{path}/{name}", new JpegEncoder
-                {
-                    Quality = 75
-                });
-            }
-            catch (Exception)
-            {
-                //Log
-                return new SaveImageAsycnResult() { isSuccess = false, Type = name };
-            }
-            return new SaveImageAsycnResult() { isSuccess = true, Type = name };
-        }
+    return dp[target] >= 0;
+}
 
-        class SaveImageAsycnResult
-        {
-            public bool isSuccess { get; set; }
-            public string Type { get; set; }
-        }
-  }
 ```
 
 #### Version 2
