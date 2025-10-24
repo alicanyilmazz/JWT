@@ -783,7 +783,7 @@ public enum AmountSource { Predefined, Api, Calculated }
 
 public abstract class BaseAmount
 {
-    public string  Index         { get; set; }   // "100","200","500","1000" ya da "API-1" vb.
+    public string  Index         { get; set; }   // "pre_1".."pre_4" | "api_1".."api_6" | "calc_n" (sadece iz)
     public string  CurrencyCode  { get; set; }
     public decimal Amount        { get; set; }
     public bool    IsDispensible { get; set; }   // Manager.IsAmountDispensible ile set edilir
@@ -798,7 +798,7 @@ public abstract class BaseAmount
 
 public sealed class ApiAmount : BaseAmount
 {
-    // Rank yok; API listesi işleme girerken zaten istenen öncelik sırasıyla verilecek.
+    // Öncelik: verilen sıraya göre işlenecek (rank yok).
     public ApiAmount(string index, decimal amount, string currency)
         : base(index, amount, currency) { }
 }
@@ -808,7 +808,9 @@ public sealed class PredefinedAmount : BaseAmount
     public AmountSource AmountSource { get; set; } = AmountSource.Predefined;
 
     /// <summary>
-    /// Değiştiyse: API Index'i ("API-1") veya "CALC-<tutar>".
+    /// Slot değiştiyse:
+    ///  - API ile: ilgili API Index ("api_1" vb.)
+    ///  - Calculated ile: "calc_n"
     /// Boş ise replace edilmemiştir.
     /// </summary>
     public string ReplacedIndex { get; set; } = string.Empty;
@@ -821,7 +823,7 @@ public sealed class PredefinedAmount : BaseAmount
 
 public static class AtmButtonPlanner
 {
-    // 1) Flag: tüm öğeler için IsDispensible set edilir (max limit kontrolü Manager tarafında)
+    // 1) Flag (SRP): IsDispensible = Manager.IsAmountDispensible(...)
     public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
     {
         if (items == null) return;
@@ -829,11 +831,16 @@ public static class AtmButtonPlanner
             x.IsDispensible = Manager.IsAmountDispensible(x.Amount, x.CurrencyCode);
     }
 
-    // 2) API → en yakın ENABLE predefined'a yerleştir (verilen sırayla)
-    public static void ApplyApiReplacementsInGivenOrder(List<PredefinedAmount> slots, IEnumerable<ApiAmount> apiInOrder)
+    // 2) API → en yakın ENABLE predefined’a yerleştir (API listesi verilen sırayla işlenir)
+    public static void ApplyApiReplacementsInGivenOrder(
+        List<PredefinedAmount> slots,
+        IEnumerable<ApiAmount> apiInOrder,
+        IReadOnlyDictionary<string, decimal> baselineByIndex // "pre_1"->100, "pre_2"->200, ...
+    )
     {
         if (slots == null || slots.Count != 4) return;
 
+        // Replace edilebilir (enable + daha önce değişmemiş) predefined slot indeksleri
         var candidateIdx = Enumerable.Range(0, slots.Count)
                                      .Where(i => slots[i].IsDispensible && string.IsNullOrEmpty(slots[i].ReplacedIndex))
                                      .ToList();
@@ -853,8 +860,8 @@ public static class AtmButtonPlanner
             {
                 if (used.Contains(i)) continue;
 
-                var baseline = ParseBaseline(slots[i].Index); // "500" -> 500
-                var diff     = Math.Abs(baseline - api.Amount);
+                var baseline = baselineByIndex[slots[i].Index]; // pre_i -> 100/200/500/1000
+                var diff = Math.Abs(baseline - api.Amount);
 
                 if (diff < bestDiff
                     || (diff == bestDiff && baseline < bestBaseline)
@@ -869,15 +876,18 @@ public static class AtmButtonPlanner
             var slot = slots[best.Value];
             slot.Amount        = api.Amount;
             slot.AmountSource  = AmountSource.Api;
-            slot.ReplacedIndex = api.Index;
-            slot.IsDispensible = true; // API zaten dispensible (Manager kontrolünden geçti)
+            slot.ReplacedIndex = api.Index;     // "api_1" vb.
+            slot.IsDispensible = true;          // API zaten dispensible idi
 
             used.Add(best.Value);
         }
     }
 
-    // 3) Kalan disabled slotları “en küçük dispensible unit”in katlarıyla doldur
-    public static void FillDisabledSlotsWithMultiples(List<PredefinedAmount> slots)
+    // 3) Kalan disabled slotları “en küçük dispensible unit”in katlarıyla doldur (calc_1, calc_2, …)
+    public static void FillDisabledSlotsWithMultiples(
+        List<PredefinedAmount> slots,
+        IReadOnlyDictionary<string, decimal> baselineByIndex, // sadece deterministik sıra için
+        string calcPrefix = "calc_")
     {
         if (slots == null || slots.Count != 4) return;
 
@@ -886,21 +896,22 @@ public static class AtmButtonPlanner
 
         // En küçük dispensible unit'i bul
         var baseUnit = units.FirstOrDefault(u => Manager.IsAmountDispensible(u, cur));
-        if (baseUnit == 0m) return; // herhangi bir unit dispensible değilse dolduramayız
+        if (baseUnit == 0m) return;
 
-        // Çakışmayı engelle: halihazırda kullanılan buton miktarları
+        // Çakışmayı engelle: mevcut Amount’lar
         var usedAmounts = new HashSet<decimal>(slots.Select(s => s.Amount));
 
-        // Doldurulacak: disabled & değişmemiş slotlar
+        // Doldurulacak: disabled & değişmemiş; sabit sıra için baseline’a göre sırala
         var toFill = slots.Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
-                          .OrderBy(s => ParseBaseline(s.Index)) // deterministik: 100-200-500-1000
+                          .OrderBy(s => baselineByIndex[s.Index]) // "pre_1"→100, "pre_2"→200, ...
                           .ToList();
+
+        int calcCounter = 1;
 
         foreach (var slot in toFill)
         {
             decimal cand = baseUnit;
 
-            // pratik bir üst limit ile döngüyü güvene al
             for (int k = 0; k < 300; k++, cand += baseUnit)
             {
                 if (usedAmounts.Contains(cand)) continue;
@@ -908,7 +919,7 @@ public static class AtmButtonPlanner
 
                 slot.Amount        = cand;
                 slot.AmountSource  = AmountSource.Calculated;
-                slot.ReplacedIndex = $"CALC-{cand}";
+                slot.ReplacedIndex = $"{calcPrefix}{calcCounter++}"; // "calc_1", "calc_2", ...
                 slot.IsDispensible = true;
 
                 usedAmounts.Add(cand);
@@ -919,30 +930,26 @@ public static class AtmButtonPlanner
 
     // 4) Orkestrasyon (flag → API replace → calculated fill)
     public static List<PredefinedAmount> Plan(
-        List<PredefinedAmount> predefined4,
-        List<ApiAmount> apiInOrder,
+        List<PredefinedAmount> predefined4,    // Index: "pre_1".."pre_4", Amount: 100/200/500/1000
+        List<ApiAmount> apiInOrder,            // Index: "api_1".."api_6" (öncelik sırası)
         bool runFlagStep = true)
     {
+        // Baseline'ları başta fotoğraflıyoruz; sonra Amount değişecek çünkü.
+        var baseline = predefined4.ToDictionary(p => p.Index, p => p.Amount);
+
         if (runFlagStep)
         {
             FlagDispensibility(predefined4);
             FlagDispensibility(apiInOrder);
         }
 
-        ApplyApiReplacementsInGivenOrder(predefined4, apiInOrder);
-        FillDisabledSlotsWithMultiples(predefined4);
+        ApplyApiReplacementsInGivenOrder(predefined4, apiInOrder, baseline);
+        FillDisabledSlotsWithMultiples(predefined4, baseline, "calc_");
 
-        return predefined4; // nihai 4 buton (gelen sıra korunur)
-    }
-
-    // Yardımcı: "100" -> 100; "API-1" gibi ifadelerde rakamları çekmeye çalışır (fallback 0)
-    private static decimal ParseBaseline(string index)
-    {
-        if (decimal.TryParse(index, out var v)) return v;
-        var digits = new string((index ?? string.Empty).Where(char.IsDigit).ToArray());
-        return decimal.TryParse(digits, out v) ? v : 0m;
+        return predefined4; // nihai 4 buton (gelen sıra korunur: pre_1..pre_4)
     }
 }
+
 
 ```
 
