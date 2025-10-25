@@ -384,20 +384,20 @@ using System.Linq;
 
 public static class AtmButtonPlanner
 {
-    // --- Opsiyonel: flag helper (Manager.IsAmountDispensible) ---
+    // (opsiyonel) Flag helper
     public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
     {
         foreach (var x in items ?? Enumerable.Empty<T>())
             x.IsDispensible = Manager.IsAmountDispensible(x.Amount, x.CurrencyCode);
     }
 
-    // --- Baseline snapshot (pre_i -> 100/200/500/1000) ---
-    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(List<PredefinedAmount> pre) =>
+    // Baseline (pre_i -> 100/200/500/1000/…)
+    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmount> pre) =>
         pre.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal);
 
-    // --- Yardımcı: en yakın baseline’a sahip slotun index’i ---
+    // En yakın baseline’a sahip slot index’i
     private static int? PickNearestIndex(
-        List<PredefinedAmount> slots,
+        IList<PredefinedAmount> slots,
         IEnumerable<int> candidates,
         decimal target,
         IReadOnlyDictionary<string, decimal> baselineByIndex)
@@ -411,18 +411,13 @@ public static class AtmButtonPlanner
             .FirstOrDefault();
     }
 
-    /// <summary>
-    /// API’den gelen (IsDispensible==true) tutarları sırayla:
-    ///   1) ENABLE pre’lere (IsDispensible==true),
-    ///   2) kalan varsa DISABLE pre’lere
-    /// en yakın baseline’a göre replace eder.
-    /// </summary>
+    /// API (dispensible) → önce ENABLE pre’ler, sonra DISABLE pre’ler (en yakın baseline)
     public static void Replace_EnabledThenDisabled(
-        List<PredefinedAmount> slots,
+        IList<PredefinedAmount> slots,
         IEnumerable<ApiAmount> apiInOrder,
         IReadOnlyDictionary<string, decimal> baselineByIndex)
     {
-        if (slots == null || slots.Count != 4) return;
+        if (slots == null || slots.Count == 0) return;
 
         var apis = (apiInOrder ?? Enumerable.Empty<ApiAmount>())
                    .Where(a => a.IsDispensible)
@@ -437,7 +432,6 @@ public static class AtmButtonPlanner
         foreach (var api in apis.ToList())
         {
             if (pass1.Count == 0) break;
-
             var best = PickNearestIndex(slots, pass1, api.Amount, baselineByIndex);
             if (best is null) continue;
 
@@ -461,7 +455,6 @@ public static class AtmButtonPlanner
         foreach (var api in apis.ToList())
         {
             if (pass2.Count == 0) break;
-
             var best = PickNearestIndex(slots, pass2, api.Amount, baselineByIndex);
             if (best is null) continue;
 
@@ -476,20 +469,15 @@ public static class AtmButtonPlanner
         }
     }
 
-    /// <summary>
-    /// Replacement SONRASI:
-    /// - Mevcut predefined listede IsDispensible==true olanların en küçüğünü BASE alır.
-    /// - BASE * k adaylarını (k=1..floor(maxAtmPayout/BASE)) üretir.
-    /// - Kullanılmayan ve dispensible olan adayları, disabled & unreplaced slotlara
-    ///   baseline sırasıyla dağıtır. Aday biterse kalanlar disabled kalır.
-    /// </summary>
+    /// Fill: Replacement sonrası listedeki **en küçük ödenebilir** tutarı base al;
+    /// base * k adaylarını (cap altında, çakışmayan ve dispensible) disabled slotlara sırayla dağıt.
     public static void FillDisabledWithMultiplesFromCurrentMinDispensible(
-        List<PredefinedAmount> slots,
+        IList<PredefinedAmount> slots,
         IReadOnlyDictionary<string, decimal> baselineByIndex,
         decimal maxAtmPayout,
         string calcPrefix = "calc_")
     {
-        if (slots == null || slots.Count != 4) return;
+        if (slots == null || slots.Count == 0) return;
 
         var cur = slots[0].CurrencyCode;
 
@@ -530,48 +518,30 @@ public static class AtmButtonPlanner
         }
     }
 
-    /// <summary>
-    /// Tek çağrıda: (Flag opsiyonel) → Replace(Enabled→Disabled) → Fill(CurrentMinDispensible)
-    /// </summary>
-    public static List<PredefinedAmount> Plan_ReplaceThenFill(
-        List<PredefinedAmount> predefined4,
-        List<ApiAmount> apiInOrder,
+    /// Tek çağrıda: Replace(Enabled→Disabled) → Fill(CurrentMinDispensible)
+    public static IList<PredefinedAmount> Plan_ReplaceThenFill(
+        IList<PredefinedAmount> predefinedN,
+        IList<ApiAmount> apiInOrder,
         decimal maxAtmPayout,
-        bool runFlagStep = false) // flag'leri dışarıda set ediyorsan false bırak
+        bool runFlagStep = false)
     {
-        if (predefined4 == null || predefined4.Count != 4) return predefined4 ?? new List<PredefinedAmount>();
+        if (predefinedN == null || predefinedN.Count == 0) return predefinedN ?? new List<PredefinedAmount>();
 
-        var baseline = SnapshotBaselineByIndex(predefined4);
+        var baseline = SnapshotBaselineByIndex(predefinedN.ToList());
 
         if (runFlagStep)
         {
-            FlagDispensibility(predefined4);
+            FlagDispensibility(predefinedN);
             FlagDispensibility(apiInOrder);
         }
 
-        Replace_EnabledThenDisabled(predefined4, apiInOrder, baseline);
-        FillDisabledWithMultiplesFromCurrentMinDispensible(predefined4, baseline, maxAtmPayout);
+        Replace_EnabledThenDisabled(predefinedN.ToList(), apiInOrder, baseline);
+        FillDisabledWithMultiplesFromCurrentMinDispensible(predefinedN, baseline, maxAtmPayout);
 
-        return predefined4;
+        return predefinedN;
     }
 }
 
-// pre: "pre_1:100, pre_2:200, pre_3:500, pre_4:1000"
-var baseline = AtmButtonPlanner.SnapshotBaselineByIndex(predefined);
-
-// istersen:
-AtmButtonPlanner.FlagDispensibility(predefined);
-AtmButtonPlanner.FlagDispensibility(api);
-
-// replace
-AtmButtonPlanner.Replace_EnabledThenDisabled(predefined, api, baseline);
-
-// fill (current min dispensible base, cap ile)
-AtmButtonPlanner.FillDisabledWithMultiplesFromCurrentMinDispensible(
-    predefined, baseline, maxAtmPayout: 10_000m);
-
-// veya tek satırda:
-var result = AtmButtonPlanner.Plan_ReplaceThenFill(predefined, api, maxAtmPayout: 10_000m, runFlagStep: true);
 
 
 ```
