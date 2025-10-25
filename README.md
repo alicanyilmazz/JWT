@@ -376,55 +376,26 @@ EXEC sp_executesql @SQL;
 iisreset
 
 ```
-
+BU
 ```c#
-
-public static void FillDisabledWithPrecomputedMultiples(
-    List<PredefinedAmount> slots,
-    IReadOnlyDictionary<string, decimal> baselineByIndex,
-    decimal maxAtmPayout,
-    string calcPrefix = "calc_")
-{
-    if (slots == null || slots.Count != 4) return;
-
-    var cur    = slots[0].CurrencyCode;
-    var minPre = baselineByIndex.Values.Min();
-    if (minPre <= 0 || maxAtmPayout < minPre) return;
-
-    // 1) Mevcut butonlarla çakışmayı engelle
-    var used = new HashSet<decimal>(slots.Select(s => s.Amount));
-
-    // 2) Cap altında, dispensable olan ve kullanılmayan adayları üret
-    int kMax = (int)Math.Floor(maxAtmPayout / minPre);
-    var candidates = Enumerable.Range(1, kMax)
-        .Select(k => minPre * k)
-        .Where(v => !used.Contains(v) && Manager.IsAmountDispensible(v, cur))
-        .ToList();
-
-    // 3) Disabled & unreplaced slotlara baseline sırasıyla dağıt
-    int calcNo = 1;
-    foreach (var slot in slots
-        .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
-        .OrderBy(s => baselineByIndex[s.Index]))
-    {
-        if (candidates.Count == 0)
-            break; // aday kalmadı → geri kalanların hepsi disabled
-
-        var cand = candidates[0];
-        candidates.RemoveAt(0);
-
-        slot.Amount        = cand;
-        slot.AmountSource  = AmountSource.Calculated;
-        slot.ReplacedIndex = $"{calcPrefix}{calcNo++}";
-        slot.IsDispensible = true;
-
-        used.Add(cand);
-    }
-}
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 public static class AtmButtonPlanner
 {
-    // En yakın pre slot index’ini seç (baseline’a göre)
+    // --- Opsiyonel: flag helper (Manager.IsAmountDispensible) ---
+    public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
+    {
+        foreach (var x in items ?? Enumerable.Empty<T>())
+            x.IsDispensible = Manager.IsAmountDispensible(x.Amount, x.CurrencyCode);
+    }
+
+    // --- Baseline snapshot (pre_i -> 100/200/500/1000) ---
+    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(List<PredefinedAmount> pre) =>
+        pre.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal);
+
+    // --- Yardımcı: en yakın baseline’a sahip slotun index’i ---
     private static int? PickNearestIndex(
         List<PredefinedAmount> slots,
         IEnumerable<int> candidates,
@@ -433,18 +404,18 @@ public static class AtmButtonPlanner
     {
         return candidates
             .Select(i => new { i, b = baselineByIndex[slots[i].Index] })
-            .OrderBy(x => Math.Abs(x.b - target))  // fark küçük
-            .ThenBy(x => x.b)                       // eşitlikte küçük baseline
-            .ThenBy(x => x.i)                       // hâlâ eşitse küçük index
+            .OrderBy(x => Math.Abs(x.b - target))
+            .ThenBy(x => x.b)
+            .ThenBy(x => x.i)
             .Select(x => (int?)x.i)
             .FirstOrDefault();
     }
 
     /// <summary>
-    /// API’den gelen (IsDispensible == true) tutarları sırayla:
-    ///   1) ENABLE pre slotlara (IsDispensible==true),
-    ///   2) kalan varsa DISABLE pre slotlara
-    /// en yakın baseline'a göre replace eder.
+    /// API’den gelen (IsDispensible==true) tutarları sırayla:
+    ///   1) ENABLE pre’lere (IsDispensible==true),
+    ///   2) kalan varsa DISABLE pre’lere
+    /// en yakın baseline’a göre replace eder.
     /// </summary>
     public static void Replace_EnabledThenDisabled(
         List<PredefinedAmount> slots,
@@ -453,13 +424,12 @@ public static class AtmButtonPlanner
     {
         if (slots == null || slots.Count != 4) return;
 
-        // sadece ödenebilir API değerleri işlenir
         var apis = (apiInOrder ?? Enumerable.Empty<ApiAmount>())
                    .Where(a => a.IsDispensible)
                    .ToList();
         if (apis.Count == 0) return;
 
-        // PASS 1: ENABLE & unreplaced
+        // 1) ENABLE & unreplaced
         var pass1 = Enumerable.Range(0, slots.Count)
             .Where(i =>  slots[i].IsDispensible && string.IsNullOrEmpty(slots[i].ReplacedIndex))
             .ToList();
@@ -475,7 +445,7 @@ public static class AtmButtonPlanner
             s.Amount        = api.Amount;
             s.AmountSource  = AmountSource.Api;
             s.ReplacedIndex = api.Index;
-            s.IsDispensible = true; // API zaten dispensible olduğu için
+            s.IsDispensible = true;
 
             pass1.Remove(best.Value);
             apis.Remove(api);
@@ -483,7 +453,7 @@ public static class AtmButtonPlanner
 
         if (apis.Count == 0) return;
 
-        // PASS 2: DISABLE & unreplaced
+        // 2) DISABLE & unreplaced
         var pass2 = Enumerable.Range(0, slots.Count)
             .Where(i => !slots[i].IsDispensible && string.IsNullOrEmpty(slots[i].ReplacedIndex))
             .ToList();
@@ -505,7 +475,104 @@ public static class AtmButtonPlanner
             apis.Remove(api);
         }
     }
+
+    /// <summary>
+    /// Replacement SONRASI:
+    /// - Mevcut predefined listede IsDispensible==true olanların en küçüğünü BASE alır.
+    /// - BASE * k adaylarını (k=1..floor(maxAtmPayout/BASE)) üretir.
+    /// - Kullanılmayan ve dispensible olan adayları, disabled & unreplaced slotlara
+    ///   baseline sırasıyla dağıtır. Aday biterse kalanlar disabled kalır.
+    /// </summary>
+    public static void FillDisabledWithMultiplesFromCurrentMinDispensible(
+        List<PredefinedAmount> slots,
+        IReadOnlyDictionary<string, decimal> baselineByIndex,
+        decimal maxAtmPayout,
+        string calcPrefix = "calc_")
+    {
+        if (slots == null || slots.Count != 4) return;
+
+        var cur = slots[0].CurrencyCode;
+
+        // BASE = post-replacement en küçük ödenebilir
+        var baseUnit = slots
+            .Where(s => s.IsDispensible)
+            .Select(s => s.Amount)
+            .DefaultIfEmpty(0m)
+            .Min();
+
+        if (baseUnit <= 0 || maxAtmPayout < baseUnit) return;
+
+        var used = new HashSet<decimal>(slots.Select(s => s.Amount));
+
+        // Cap altında, çakışmayan ve dispensible aday katlar
+        int kMax = (int)Math.Floor(maxAtmPayout / baseUnit);
+        var candidates = Enumerable.Range(1, kMax)
+            .Select(k => baseUnit * k)
+            .Where(v => !used.Contains(v) && Manager.IsAmountDispensible(v, cur))
+            .ToList();
+
+        int calcNo = 1;
+        foreach (var slot in slots
+            .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+            .OrderBy(s => baselineByIndex[s.Index]))
+        {
+            if (candidates.Count == 0) break; // aday kalmadı → kalanlar disabled
+
+            var cand = candidates[0];
+            candidates.RemoveAt(0);
+
+            slot.Amount        = cand;
+            slot.AmountSource  = AmountSource.Calculated;
+            slot.ReplacedIndex = $"{calcPrefix}{calcNo++}";
+            slot.IsDispensible = true;
+
+            used.Add(cand);
+        }
+    }
+
+    /// <summary>
+    /// Tek çağrıda: (Flag opsiyonel) → Replace(Enabled→Disabled) → Fill(CurrentMinDispensible)
+    /// </summary>
+    public static List<PredefinedAmount> Plan_ReplaceThenFill(
+        List<PredefinedAmount> predefined4,
+        List<ApiAmount> apiInOrder,
+        decimal maxAtmPayout,
+        bool runFlagStep = false) // flag'leri dışarıda set ediyorsan false bırak
+    {
+        if (predefined4 == null || predefined4.Count != 4) return predefined4 ?? new List<PredefinedAmount>();
+
+        var baseline = SnapshotBaselineByIndex(predefined4);
+
+        if (runFlagStep)
+        {
+            FlagDispensibility(predefined4);
+            FlagDispensibility(apiInOrder);
+        }
+
+        Replace_EnabledThenDisabled(predefined4, apiInOrder, baseline);
+        FillDisabledWithMultiplesFromCurrentMinDispensible(predefined4, baseline, maxAtmPayout);
+
+        return predefined4;
+    }
 }
+
+// pre: "pre_1:100, pre_2:200, pre_3:500, pre_4:1000"
+var baseline = AtmButtonPlanner.SnapshotBaselineByIndex(predefined);
+
+// istersen:
+AtmButtonPlanner.FlagDispensibility(predefined);
+AtmButtonPlanner.FlagDispensibility(api);
+
+// replace
+AtmButtonPlanner.Replace_EnabledThenDisabled(predefined, api, baseline);
+
+// fill (current min dispensible base, cap ile)
+AtmButtonPlanner.FillDisabledWithMultiplesFromCurrentMinDispensible(
+    predefined, baseline, maxAtmPayout: 10_000m);
+
+// veya tek satırda:
+var result = AtmButtonPlanner.Plan_ReplaceThenFill(predefined, api, maxAtmPayout: 10_000m, runFlagStep: true);
+
 
 ```
 ------------------------------------------------------------
