@@ -1284,3 +1284,279 @@ public class GenerateData
     }
 }
 ```
+------------------DISPENSE PRO-----------------------------
+```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public static class AtmButtonPlanner
+{
+    private const string DefaultCalcPrefix = "calc_";
+
+    // ---------------------------
+    // Yardımcı / Ortak
+    // ---------------------------
+
+    /// <summary>
+    /// Verilen item'ların IsDispensible flag'lerini günceller
+    /// </summary>
+    public static void FlagDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
+    {
+        if (items == null) return;
+
+        foreach (var item in items.Where(i => i != null))
+        {
+            item.IsDispensible = Manager.IsAmountDispensible(item.Amount, item.CurrencyCode);
+        }
+    }
+
+    /// <summary>
+    /// Predefined amount'ların baseline snapshot'ını oluşturur
+    /// </summary>
+    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmount> pre)
+    {
+        if (pre == null) throw new ArgumentNullException(nameof(pre));
+        return pre.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Baseline sözlüğünün tüm slot index'lerini kapsadığını doğrular
+    /// </summary>
+    private static void ValidateBaselineCoverage(
+        IList<PredefinedAmount> slots,
+        IReadOnlyDictionary<string, decimal> baselineByIndex)
+    {
+        if (slots == null) throw new ArgumentNullException(nameof(slots));
+        if (baselineByIndex == null) throw new ArgumentNullException(nameof(baselineByIndex));
+        
+        var missingIndices = slots
+            .Select(s => s.Index)
+            .Where(idx => !baselineByIndex.ContainsKey(idx))
+            .ToList();
+
+        if (missingIndices.Any())
+            throw new ArgumentException(
+                $"Baseline sözlüğü şu index değerlerini içermiyor: {string.Join(", ", missingIndices)}");
+    }
+
+    /// <summary>
+    /// Tüm slotların aynı para biriminde olduğunu doğrular
+    /// </summary>
+    private static void ValidateSingleCurrency(IList<PredefinedAmount> slots)
+    {
+        if (slots == null || slots.Count == 0) return;
+
+        var currencies = slots
+            .Select(s => s.CurrencyCode)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (currencies.Count > 1)
+            throw new InvalidOperationException(
+                $"Slots birden fazla para birimi içeriyor: {string.Join(", ", currencies)}");
+    }
+
+    // ---------------------------
+    // Replacement (tek para birimi, benzersiz değer garantisi)
+    // ---------------------------
+
+    private sealed class SlotReplacer
+    {
+        private readonly IList<PredefinedAmount> _slots;
+        private readonly IReadOnlyDictionary<string, decimal> _baselineByIndex;
+        private readonly List<ApiAmount> _remainingApiAmounts;
+        private readonly HashSet<decimal> _currentAmounts;
+
+        public SlotReplacer(
+            IList<PredefinedAmount> slots,
+            IEnumerable<ApiAmount> apiAmounts,
+            IReadOnlyDictionary<string, decimal> baselineByIndex)
+        {
+            _slots = slots ?? throw new ArgumentNullException(nameof(slots));
+            _baselineByIndex = baselineByIndex ?? throw new ArgumentNullException(nameof(baselineByIndex));
+            _remainingApiAmounts = apiAmounts?.Where(a => a != null && a.IsDispensible).ToList() 
+                ?? new List<ApiAmount>();
+            _currentAmounts = new HashSet<decimal>(_slots.Select(s => s.Amount));
+        }
+
+        public void ReplaceSlots()
+        {
+            if (_slots.Count == 0 || _remainingApiAmounts.Count == 0) return;
+            ValidateBaselineCoverage(_slots, _baselineByIndex);
+
+            // 1) ENABLE → 2) DISABLE
+            ReplaceInPhase(isDispensible: true);
+            ReplaceInPhase(isDispensible: false);
+        }
+
+        private void ReplaceInPhase(bool isDispensible)
+        {
+            // Geriye doğru iterate ederek RemoveAt performansını artırıyoruz
+            for (int i = _remainingApiAmounts.Count - 1; i >= 0; i--)
+            {
+                var api = _remainingApiAmounts[i];
+
+                // Aynı tutarı ikinci kez yerleştirme
+                if (_currentAmounts.Contains(api.Amount))
+                    continue;
+
+                var candidateIdx = Enumerable.Range(0, _slots.Count)
+                    .Where(idx =>
+                        _slots[idx].IsDispensible == isDispensible &&
+                        string.IsNullOrEmpty(_slots[idx].ReplacedIndex))
+                    .ToList();
+
+                if (candidateIdx.Count == 0) continue;
+
+                var best = FindNearestSlotIndex(candidateIdx, api.Amount);
+                if (!best.HasValue) continue;
+
+                ReplaceSlot(best.Value, api);
+                _remainingApiAmounts.RemoveAt(i); // O(1) sondan silme
+            }
+        }
+
+        private int? FindNearestSlotIndex(List<int> candidateIndices, decimal targetAmount)
+        {
+            if (candidateIndices.Count == 0) return null;
+
+            return candidateIndices
+                .OrderBy(i => Math.Abs(_baselineByIndex[_slots[i].Index] - targetAmount))
+                .ThenBy(i => _baselineByIndex[_slots[i].Index])
+                .ThenBy(i => i)
+                .First();
+        }
+
+        private void ReplaceSlot(int slotIndex, ApiAmount apiAmount)
+        {
+            var slot = _slots[slotIndex];
+            slot.Amount        = apiAmount.Amount;
+            slot.AmountSource  = AmountSource.Api;
+            slot.ReplacedIndex = apiAmount.Index;
+            slot.IsDispensible = true;
+
+            _currentAmounts.Add(slot.Amount);
+        }
+    }
+
+    // ---------------------------
+    // Fill (tek para birimi, cap ve benzersizlik korunur)
+    // ---------------------------
+
+    private sealed class DisabledSlotFiller
+    {
+        private readonly IList<PredefinedAmount> _slots;
+        private readonly IReadOnlyDictionary<string, decimal> _baselineByIndex;
+        private readonly decimal _maxAtmPayout;
+        private readonly string _calcPrefix;
+
+        public DisabledSlotFiller(
+            IList<PredefinedAmount> slots,
+            IReadOnlyDictionary<string, decimal> baselineByIndex,
+            decimal maxAtmPayout,
+            string calcPrefix = DefaultCalcPrefix)
+        {
+            _slots = slots ?? throw new ArgumentNullException(nameof(slots));
+            _baselineByIndex = baselineByIndex ?? throw new ArgumentNullException(nameof(baselineByIndex));
+            _maxAtmPayout = maxAtmPayout;
+            _calcPrefix = calcPrefix ?? DefaultCalcPrefix;
+        }
+
+        public void FillSlots()
+        {
+            if (_slots.Count == 0) return;
+            ValidateBaselineCoverage(_slots, _baselineByIndex);
+
+            var currency = _slots[0].CurrencyCode;
+
+            // BASE = listede en küçük ödenebilir
+            var baseUnit = _slots
+                .Where(s => s.IsDispensible)
+                .Select(s => s.Amount)
+                .DefaultIfEmpty(0m)
+                .Min();
+
+            if (baseUnit <= 0 || _maxAtmPayout < baseUnit) return;
+
+            var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
+            int kMax = (int)Math.Floor(_maxAtmPayout / baseUnit);
+
+            // Cap altında, çakışmayan ve dispensible olan adaylar
+            var candidates = Enumerable.Range(1, kMax)
+                .Select(k => baseUnit * k)
+                .Where(v => !used.Contains(v) && Manager.IsAmountDispensible(v, currency))
+                .ToList();
+
+            int calcNo = 1;
+            foreach (var slot in _slots
+                .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+                .OrderBy(s => _baselineByIndex[s.Index]))
+            {
+                if (candidates.Count == 0) break;
+
+                var cand = candidates[0];
+                candidates.RemoveAt(0);
+
+                slot.Amount        = cand;
+                slot.AmountSource  = AmountSource.Calculated;
+                slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
+                slot.IsDispensible = true;
+
+                used.Add(cand);
+            }
+        }
+    }
+
+    // ---------------------------
+    // Public API
+    // ---------------------------
+
+    public static void Replace_EnabledThenDisabled(
+        IList<PredefinedAmount> slots,
+        IEnumerable<ApiAmount> apiInOrder,
+        IReadOnlyDictionary<string, decimal> baselineByIndex)
+    {
+        if (slots == null) throw new ArgumentNullException(nameof(slots));
+        ValidateBaselineCoverage(slots, baselineByIndex);
+
+        new SlotReplacer(slots, apiInOrder, baselineByIndex).ReplaceSlots();
+    }
+
+    public static void FillDisabledWithMultiplesFromCurrentMinDispensible(
+        IList<PredefinedAmount> slots,
+        IReadOnlyDictionary<string, decimal> baselineByIndex,
+        decimal maxAtmPayout,
+        string calcPrefix = DefaultCalcPrefix)
+    {
+        if (slots == null) throw new ArgumentNullException(nameof(slots));
+        ValidateBaselineCoverage(slots, baselineByIndex);
+
+        new DisabledSlotFiller(slots, baselineByIndex, maxAtmPayout, calcPrefix).FillSlots();
+    }
+
+    public static IList<PredefinedAmount> Plan_ReplaceThenFill(
+        IList<PredefinedAmount> predefinedN,
+        IList<ApiAmount> apiInOrder,
+        decimal maxAtmPayout,
+        bool runFlagStep = false)
+    {
+        if (predefinedN == null || predefinedN.Count == 0) 
+            return predefinedN ?? new List<PredefinedAmount>();
+
+        var baseline = SnapshotBaselineByIndex(predefinedN);
+
+        if (runFlagStep)
+        {
+            FlagDispensibility(predefinedN);
+            FlagDispensibility(apiInOrder);
+        }
+
+        Replace_EnabledThenDisabled(predefinedN, apiInOrder, baseline);
+        FillDisabledWithMultiplesFromCurrentMinDispensible(predefinedN, baseline, maxAtmPayout);
+
+        return predefinedN;
+    }
+}
+```
