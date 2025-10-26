@@ -832,17 +832,14 @@ public static class AtmButtonPlanner
             throw new ArgumentException("Baseline sözlüğü, tüm slot Index değerlerini içermiyor.");
     }
 
-    private static string DupKey(string currency, decimal amount)
-        => $"{(currency ?? string.Empty).ToUpperInvariant()}|{amount}";
-
     // ---------------------------
-    // Replacement (OOP)
+    // Replacement (OOP) – Tek para birimi varsayımı
     // ---------------------------
 
     /// <summary>
     /// API tutarlarını yerleştirir: önce ENABLE pre, sonra DISABLE pre.
-    /// - Her API tutarı için, **aynı para birimindeki** en yakın baseline slota replace.
-    /// - (opsiyonel) avoidDuplicates=true ise, aynı (currency, amount) değerini ikinci kez yerleştirmez.
+    /// - Her API tutarı için en yakın baseline slota replace.
+    /// - (opsiyonel) avoidDuplicates=true ise aynı tutarı ikinci kez yerleştirmez.
     /// </summary>
     private sealed class SlotReplacer
     {
@@ -850,7 +847,7 @@ public static class AtmButtonPlanner
         private readonly IReadOnlyDictionary<string, decimal> _baselineByIndex;
         private readonly List<ApiAmount> _remainingApiAmounts;
         private readonly bool _avoidDuplicates;
-        private readonly HashSet<string> _currentAmounts; // key: "CUR|AMOUNT"
+        private readonly HashSet<decimal> _currentAmounts; // mevcut buton tutarları
 
         public SlotReplacer(
             IList<PredefinedAmount> slots,
@@ -863,10 +860,7 @@ public static class AtmButtonPlanner
             _remainingApiAmounts = apiAmounts?.Where(a => a.IsDispensible).ToList() ?? new List<ApiAmount>();
             _avoidDuplicates = avoidDuplicates;
 
-            // Mevcut buton değerleri (currency-aware)
-            _currentAmounts = new HashSet<string>(
-                _slots.Select(s => DupKey(s.CurrencyCode, s.Amount))
-            );
+            _currentAmounts = new HashSet<decimal>(_slots.Select(s => s.Amount));
         }
 
         public void ReplaceSlots()
@@ -882,18 +876,15 @@ public static class AtmButtonPlanner
 
         private void ReplaceInPhase(bool isDispensible)
         {
-            // Bu fazda uygun, henüz replace edilmemiş, istenen dispensible state'deki, ve API currency'siyle aynı currency olan slotları hedefleyeceğiz
             foreach (var api in _remainingApiAmounts.ToList())
             {
-                // duplicate kuralı (opsiyonel)
-                if (_avoidDuplicates && _currentAmounts.Contains(DupKey(api.CurrencyCode, api.Amount)))
-                    continue; // bu API miktarını tamamen atla
+                if (_avoidDuplicates && _currentAmounts.Contains(api.Amount))
+                    continue; // bu API miktarını atla
 
                 var candidateIdx = Enumerable.Range(0, _slots.Count)
                     .Where(i =>
                         _slots[i].IsDispensible == isDispensible &&
-                        string.IsNullOrEmpty(_slots[i].ReplacedIndex) &&
-                        string.Equals(_slots[i].CurrencyCode, api.CurrencyCode, StringComparison.OrdinalIgnoreCase))
+                        string.IsNullOrEmpty(_slots[i].ReplacedIndex))
                     .ToList();
 
                 if (candidateIdx.Count == 0) continue;
@@ -909,37 +900,34 @@ public static class AtmButtonPlanner
         private int? FindNearestSlotIndex(IEnumerable<int> candidateIndices, decimal targetAmount) =>
             candidateIndices
                 .Select(i => new { Index = i, BaselineAmount = _baselineByIndex[_slots[i].Index] })
-                .OrderBy(x => Math.Abs(x.BaselineAmount - targetAmount)) // en yakın
-                .ThenBy(x => x.BaselineAmount)                           // eşitlikte küçük baseline
-                .ThenBy(x => x.Index)                                    // hâlâ eşitse küçük index
+                .OrderBy(x => Math.Abs(x.BaselineAmount - targetAmount))
+                .ThenBy(x => x.BaselineAmount)
+                .ThenBy(x => x.Index)
                 .Select(x => (int?)x.Index)
                 .FirstOrDefault();
 
         private void ReplaceSlot(int slotIndex, ApiAmount apiAmount)
         {
-            // (avoidDuplicates kontrolü zaten faz başında yapıldı)
             var slot = _slots[slotIndex];
 
-            // currency uyuşması garanti (fazda filtrelendi)
             slot.Amount        = apiAmount.Amount;
             slot.AmountSource  = AmountSource.Api;
             slot.ReplacedIndex = apiAmount.Index;
             slot.IsDispensible = true;
 
-            _currentAmounts.Add(DupKey(slot.CurrencyCode, slot.Amount));
+            _currentAmounts.Add(slot.Amount);
         }
     }
 
     // ---------------------------
-    // Fill (OOP) – Currency-aware
+    // Fill (OOP) – Tek para birimi varsayımı
     // ---------------------------
 
     /// <summary>
-    /// Replacement SONRASI doldurma:
-    /// - Slotları para birimine göre gruplar.
-    /// - Her currency grubu için "o gruptaki en küçük ödenebilir tutarı" BASE seçer.
+    /// Replacement SONRASI:
+    /// - Mevcut listede IsDispensible==true olanların en küçüğünü BASE alır.
     /// - BASE * k (cap altında, çakışmayan, dispensible) adaylarını üretir ve
-    ///   o grubun disabled & unreplaced slotlarına baseline sırasıyla dağıtır.
+    ///   disabled & unreplaced slotlara baseline sırasıyla dağıtır.
     /// </summary>
     private sealed class DisabledSlotFiller
     {
@@ -965,24 +953,18 @@ public static class AtmButtonPlanner
             if (_slots.Count == 0) return;
             ValidateBaselineCoverage((IList<PredefinedAmount>)_slots, _baselineByIndex);
 
-            // Currency'e göre gruplandır
-            foreach (var group in _slots.GroupBy(s => s.CurrencyCode))
-                FillOneCurrencyGroup(group.Key, group.ToList());
-        }
+            var currency = _slots[0].CurrencyCode; // tek para birimi varsayımı
 
-        private void FillOneCurrencyGroup(string currency, List<PredefinedAmount> groupSlots)
-        {
-            // BASE = o para biriminde en küçük ödenebilir
-            var baseUnit = groupSlots
-                .Where(s => s.IsDispensible && string.Equals(s.CurrencyCode, currency, StringComparison.OrdinalIgnoreCase))
+            // BASE = en küçük ödenebilir
+            var baseUnit = _slots
+                .Where(s => s.IsDispensible)
                 .Select(s => s.Amount)
                 .DefaultIfEmpty(0m)
                 .Min();
 
             if (baseUnit <= 0 || _maxAtmPayout < baseUnit) return;
 
-            // Mevcut (aynı currency) tutarlar ile çakışmayı engelle
-            var used = new HashSet<decimal>(groupSlots.Select(s => s.Amount));
+            var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
 
             // Cap altında, çakışmayan ve dispensible aday katlar
             int kMax = (int)Math.Floor(_maxAtmPayout / baseUnit);
@@ -991,12 +973,9 @@ public static class AtmButtonPlanner
                 .Where(v => !used.Contains(v) && Manager.IsAmountDispensible(v, currency))
                 .ToList();
 
-            // Disabled & unreplaced (aynı currency) slotlar → baseline sırasına göre
             int calcNo = 1;
-            foreach (var slot in groupSlots
-                .Where(s => !s.IsDispensible &&
-                            string.IsNullOrEmpty(s.ReplacedIndex) &&
-                            string.Equals(s.CurrencyCode, currency, StringComparison.OrdinalIgnoreCase))
+            foreach (var slot in _slots
+                .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
                 .OrderBy(s => _baselineByIndex[s.Index]))
             {
                 if (candidates.Count == 0) break; // aday kalmadı → kalanlar disabled
@@ -1022,8 +1001,8 @@ public static class AtmButtonPlanner
     /// API’den gelen (IsDispensible==true) tutarları sırayla:
     ///   1) ENABLE pre’lere,
     ///   2) DISABLE pre’lere,
-    /// aynı currency içinden **en yakın baseline** slota replace eder.
-    /// (avoidDuplicates=true ise aynı (currency, amount) değeri ikinci kez yerleştirilmez.)
+    /// en yakın baseline slota replace eder.
+    /// (avoidDuplicates=true ise aynı tutarı ikinci kez yerleştirmez.)
     /// </summary>
     public static void Replace_EnabledThenDisabled(
         IList<PredefinedAmount> slots,
@@ -1039,8 +1018,7 @@ public static class AtmButtonPlanner
     }
 
     /// <summary>
-    /// Replacement sonrası: para birimine göre gruplar;
-    /// her grup için "o gruptaki en küçük ödenebilir" tabanı alıp
+    /// Replacement sonrası: en küçük ödenebilir tabanı alıp,
     /// cap altında katları disabled slotlara dağıtır.
     /// </summary>
     public static void FillDisabledWithMultiplesFromCurrentMinDispensible(
@@ -1057,7 +1035,7 @@ public static class AtmButtonPlanner
     }
 
     /// <summary>
-    /// Tek çağrıda: (opsiyonel Flag) → Replace(Enabled→Disabled) → Fill(CurrentMinDispensible; currency-aware)
+    /// Tek çağrıda: (opsiyonel Flag) → Replace(Enabled→Disabled) → Fill(CurrentMinDispensible)
     /// </summary>
     public static IList<PredefinedAmount> Plan_ReplaceThenFill(
         IList<PredefinedAmount> predefinedN,
@@ -1082,6 +1060,7 @@ public static class AtmButtonPlanner
         return predefinedN;
     }
 }
+
 
 ```
 
