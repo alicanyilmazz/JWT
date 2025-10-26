@@ -2051,3 +2051,386 @@ public class GenerateData
     }
 }
 ```
+
+------------------DISPENSE CLAUDE MAX ITEMS RESTRICTION-----------------------------
+```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public enum DispenseAlgorithm
+{
+    Greedy,      // Hızlı, basit, %95+ başarı oranı
+    SubsetSum    // Yavaş ama %100 matematiksel kesinlik
+}
+
+public static class Manager
+{
+    // Varsayılan algoritma (istediğin zaman değiştirebilirsin)
+    private static DispenseAlgorithm _currentAlgorithm = DispenseAlgorithm.SubsetSum;
+    
+    // Maksimum dispensible banknot adedi (bir seferde verilebilecek maksimum banknot sayısı)
+    private static int _maxDispensibleItems = int.MaxValue;
+
+    /// <summary>
+    /// Kullanılacak algoritmayı ayarla
+    /// </summary>
+    public static void SetAlgorithm(DispenseAlgorithm algorithm)
+    {
+        _currentAlgorithm = algorithm;
+    }
+
+    /// <summary>
+    /// Maksimum dispensible banknot adedini ayarla
+    /// </summary>
+    public static void SetMaxDispensibleItems(int maxItems)
+    {
+        _maxDispensibleItems = maxItems > 0 ? maxItems : int.MaxValue;
+    }
+
+    // ---------- Public API ----------
+
+    /// <summary>
+    /// amount tutarı, currencyCode para biriminde ÖDENEBİLİR mi?
+    /// - CDM ve REC ayrı ayrı denenir (karıştırılmaz).
+    /// - maxDispensibleItems (maksimum banknot adedi) aşılırsa false.
+    /// </summary>
+    public static bool IsAmountDispensible(decimal amount, string currencyCode, int maxDispensibleItems)
+    {
+        if (!ValidateInputs(amount, currencyCode))
+            return false;
+
+        var prevMaxItems = _maxDispensibleItems;
+        _maxDispensibleItems = maxDispensibleItems;
+        
+        bool result = IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode)
+                   || IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode);
+        
+        _maxDispensibleItems = prevMaxItems;
+        return result;
+    }
+
+    // Geriye dönük uyumluluk (limit olmadan)
+    public static bool IsAmountDispensible(decimal amount, string currencyCode)
+        => IsAmountDispensible(amount, currencyCode, _maxDispensibleItems);
+
+    // ---------- Private: orchestration per device ----------
+
+    private static bool IsAmountDispensibleOnDevice(AtmDeviceType deviceType, decimal amount, string currencyCode)
+    {
+        // 1) Kullanılabilir kasetleri topla
+        var usable = GetUsableCassettes(deviceType, currencyCode);
+        if (!usable.Any())
+            return false;
+
+        // 2) Kupüre göre grupla (adetleri topla)
+        var groups = AggregateByDenomination(usable);
+        if (groups.Count == 0)
+            return false;
+
+        // 3) Hızlı kapasite kontrolü
+        if (!HasSufficientCapacity(groups, amount))
+            return false;
+
+        // 4) Seçilen algoritmaya göre kontrol et
+        return _currentAlgorithm == DispenseAlgorithm.Greedy
+            ? CanMakeExactAmount_Greedy(groups, amount)
+            : CanMakeExactAmount_SubsetSum(groups, amount);
+    }
+
+    // ---------- Private: validation ----------
+
+    private static bool ValidateInputs(decimal amount, string currencyCode)
+    {
+        if (amount <= 0m) return false;
+        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
+        return true;
+    }
+
+    // ---------- Private: cassette retrieval & filtering ----------
+
+    private static IEnumerable<CdmCassette> GetUsableCassettes(AtmDeviceType deviceType, string currencyCode)
+    {
+        var allCassettes = Diagnostic.Diagnostics?.Values?
+            .OfType<CdmDevice>()
+            .SelectMany(d => d.Cassettes.Values)
+            ?? Enumerable.Empty<CdmCassette>();
+
+        string typeName = deviceType.ToString();
+
+        return allCassettes.Where(c =>
+            c != null &&
+            string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
+            c.Status < 4 &&
+            c.CurrentCount > 0 &&
+            c.BanknoteType > 0m);
+    }
+
+    // ---------- Private: grouping & capacity ----------
+
+    private sealed class DenomGroup
+    {
+        public decimal Denom { get; init; }
+        public int     Count { get; init; }
+    }
+
+    private static List<DenomGroup> AggregateByDenomination(IEnumerable<CdmCassette> cassettes)
+    {
+        return cassettes
+            .GroupBy(c => c.BanknoteType)
+            .Select(g => new DenomGroup { Denom = g.Key, Count = g.Sum(x => x.CurrentCount) })
+            .OrderByDescending(g => g.Denom) // sıralama şart değil, okunurluk için
+            .ToList();
+    }
+
+    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
+    {
+        decimal total = groups.Sum(g => g.Denom * g.Count);
+        return total >= amount;
+    }
+
+    // ---------- GREEDY ALGORITHM ----------
+
+    /// <summary>
+    /// Greedy algoritma: En büyük kupürden başlayarak küçüğe doğru ilerler.
+    /// Avantaj: Çok hızlı O(n), az bellek
+    /// Dezavantaj: Bazı nadir durumlarda yanlış negatif verebilir
+    /// </summary>
+    private static bool CanMakeExactAmount_Greedy(List<DenomGroup> groups, decimal amount)
+    {
+        decimal remaining = amount;
+        int totalNotesUsed = 0;
+
+        foreach (var group in groups)
+        {
+            // Bu kupürden kaç tane kullanılabilir (hem tutar hem banknot adedi limiti)
+            int maxByAmount = (int)(remaining / group.Denom);
+            int maxByCount = group.Count;
+            int maxByLimit = _maxDispensibleItems - totalNotesUsed;
+            
+            int notesToUse = Math.Min(Math.Min(maxByAmount, maxByCount), maxByLimit);
+            
+            remaining -= notesToUse * group.Denom;
+            totalNotesUsed += notesToUse;
+
+            if (remaining == 0)
+                return true;
+            
+            if (totalNotesUsed >= _maxDispensibleItems)
+                return false; // Limit aşıldı ama tutar tamamlanmadı
+        }
+
+        return remaining == 0;
+    }
+
+    // ---------- SUBSET-SUM ALGORITHM ----------
+
+    /// <summary>
+    /// Subset-Sum algoritması (Binary Splitting ile optimize edilmiş)
+    /// Kupür+adet kısıtlarıyla tam 'amount' yapılabiliyor mu?
+    /// Binary splitting ile adetleri 1,2,4,... paketlerine bölüp 0/1 knapsack gibi ilerler.
+    /// Avantaj: %100 matematiksel kesinlik, tüm kombinasyonları kontrol eder
+    /// Dezavantaj: Daha fazla bellek ve işlem gerektirir
+    /// </summary>
+    private static bool CanMakeExactAmount_SubsetSum(List<DenomGroup> groups, decimal amount)
+    {
+        // State: (tutar, kullanılan_banknot_adedi)
+        var reachable = new HashSet<(decimal amount, int noteCount)> { (0m, 0) };
+
+        foreach (var g in groups)
+        {
+            int remaining = g.Count;
+            int pack = 1;
+
+            // Binary splitting: count'u 1,2,4,8... paketlerine böl
+            while (remaining > 0)
+            {
+                int take = Math.Min(pack, remaining);
+                decimal chunk = g.Denom * take;
+
+                // snapshot ile genişlet (iterasyon sırasında set'i büyütme)
+                var snapshot = reachable.ToArray();
+                foreach (var (amt, noteCount) in snapshot)
+                {
+                    var newAmount = amt + chunk;
+                    var newNoteCount = noteCount + take;
+                    
+                    // Maksimum banknot adedi kontrolü
+                    if (newNoteCount > _maxDispensibleItems) continue;
+                    
+                    // Tutar kontrolü
+                    if (newAmount > amount) continue;
+                    if (newAmount == amount) return true; // erken çıkış
+                    
+                    reachable.Add((newAmount, newNoteCount));
+                }
+
+                remaining -= take;
+                pack <<= 1; // 1,2,4,8,16... şeklinde ilerle
+            }
+        }
+
+        return false;
+    }
+}
+
+// ============ KULLANIM ÖRNEĞİ ============
+
+internal class Program
+{
+    static void Main(string[] args)
+    {
+        // Diagnostic dictionary'yi başlat
+        Diagnostic.Diagnostics = new Dictionary<AtmDeviceType, BaseDevice>();
+
+        var cdmDevice = new CdmDevice
+        {
+            DeviceClass = AtmDeviceType.CDM,
+            Status = 0,
+            Cassettes = new Dictionary<int, CdmCassette>
+            {
+                {1, GenerateData.GetCdmCassette("CDM001",1,"REJ",0,"USD",0,0) },
+                {2, GenerateData.GetCdmCassette("CDM001",2,"REJ",0,"USD",0,0) },
+                {3, GenerateData.GetCdmCassette("CDM001",3,"CDM",50,"USD",5,0) },
+                {4, GenerateData.GetCdmCassette("CDM001",4,"CDM",20,"USD",6,0) },
+                {5, GenerateData.GetCdmCassette("CDM001",5,"CDM",100,"USD",4,0) },
+                {6, GenerateData.GetCdmCassette("CDM001",6,"CDM",10,"USD",7,0) },
+                {7, GenerateData.GetCdmCassette("CDM001",7,"REC",50,"USD",3,0) },
+                {8, GenerateData.GetCdmCassette("CDM001",8,"REC",200,"USD",7,0) },
+            }
+        };
+
+        // ÖNEMLİ: Device'ı dictionary'ye ekle!
+        Diagnostic.Diagnostics.Add(AtmDeviceType.CDM, cdmDevice);
+
+        // Maksimum banknot adedi limiti ayarla (örnek: 40 banknot)
+        Manager.SetMaxDispensibleItems(40);
+
+        // Test senaryoları
+        Console.WriteLine("=== SUBSET-SUM ALGORITHM (Varsayılan) ===");
+        Manager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
+        TestDispense();
+
+        Console.WriteLine("\n=== GREEDY ALGORITHM ===");
+        Manager.SetAlgorithm(DispenseAlgorithm.Greedy);
+        TestDispense();
+
+        // Maksimum banknot adedi testi
+        Console.WriteLine("\n=== MAKSİMUM BANKNOT ADEDİ TESTİ ===");
+        TestMaxNoteLimit();
+    }
+
+    static void TestDispense()
+    {
+        // Test 1: Basit tutar
+        Test(150, "USD", "150 USD"); // 100 + 2x20 + 10 = 4 banknot
+
+        // Test 2: Büyük tutar
+        Test(800, "USD", "800 USD"); // Toplam: 400+120+70 = 590, yetmez
+
+        // Test 3: Tam eşleşme
+        Test(100, "USD", "100 USD"); // 1x100 = 1 banknot
+
+        // Test 4: Küçük tutar
+        Test(30, "USD", "30 USD"); // 20 + 10 = 2 banknot
+
+        // Test 5: Karmaşık kombinasyon
+        Test(120, "USD", "120 USD"); // 100 + 20 = 2 banknot
+    }
+
+    static void TestMaxNoteLimit()
+    {
+        // Örnek: 500$ çekmek için 50x10$ = 50 banknot gerekir
+        // Ama limit 40 banknot ise ödenemez olmalı
+        
+        Manager.SetMaxDispensibleItems(40);
+        Console.WriteLine("Maksimum banknot limiti: 40");
+        
+        Manager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
+        
+        // 500$ = En az 5 banknot gerekir (5x100)
+        Test(500, "USD", "500$ (5 banknot gerekir)");
+        
+        // 100$ = 10x10 = 10 banknot (limit altında)
+        Test(100, "USD", "100$ (10 banknot ile yapılabilir)");
+        
+        // Küçük limit testi
+        Manager.SetMaxDispensibleItems(3);
+        Console.WriteLine("\nMaksimum banknot limiti: 3");
+        Test(150, "USD", "150$ (min 2 banknot: 100+50)");
+        Test(30, "USD", "30$ (min 3 banknot: 10+10+10)");
+    }
+
+    static void Test(decimal amount, string currency, string description)
+    {
+        bool result = Manager.IsAmountDispensible(amount, currency);
+        Console.WriteLine($"{description}: {(result ? "✓ ÖDENEBİLİR" : "✗ ÖDENEMEYEN")}");
+    }
+}
+
+// ============ MODEL CLASSES ============
+
+public enum AtmDeviceType
+{
+    CIM, CDM, IDC, PIN, CHK, PTRR, PTRJ, REC
+}
+
+public class BaseDevice
+{
+    public AtmDeviceType DeviceClass { get; set; }
+    public int Status { get; set; }
+}
+
+public class CdmDevice : BaseDevice
+{
+    public Dictionary<int, CdmCassette> Cassettes { get; set; }
+}
+
+public class BaseCassette
+{
+    public string DeviceId { get; set; }
+    public short CassetteId { get; set; }
+    public string CassetteType { get; set; }
+    public decimal BanknoteType { get; set; }
+    public string CurrencyCode { get; set; }
+    public int CurrentCount { get; set; }
+    public int Status { get; set; }
+}
+
+public class CdmCassette : BaseCassette { }
+
+public class Diagnostic
+{
+    public static Dictionary<AtmDeviceType, BaseDevice> Diagnostics;
+}
+
+public class GenerateData
+{
+    public static CdmCassette GetCdmCassette(
+        string deviceId,
+        short cassetteId,
+        string cassetteType,
+        decimal banknoteType,
+        string currencyCode,
+        int currentCount,
+        int status)
+    {
+        return new CdmCassette
+        {
+            DeviceId = deviceId,
+            CassetteId = cassetteId,
+            CassetteType = cassetteType,
+            BanknoteType = banknoteType,
+            CurrencyCode = currencyCode,
+            CurrentCount = currentCount,
+            Status = status
+        };
+    }
+}
+```
+
+------------------DISPENSE GPT MAX ITEM RESTRICTION-----------------------------
+```c#
+
+```
