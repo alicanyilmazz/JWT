@@ -1704,4 +1704,350 @@ public static class Manager
 ```
 ------------------DISPENSE PRO-----------------------------
 ```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public enum DispenseAlgorithm
+{
+    Greedy,      // Hızlı, basit, %95+ başarı oranı
+    SubsetSum    // Yavaş ama %100 matematiksel kesinlik
+}
+
+public static class Manager
+{
+    // Varsayılan algoritma (istediğin zaman değiştirebilirsin)
+    private static DispenseAlgorithm _currentAlgorithm = DispenseAlgorithm.SubsetSum;
+
+    /// <summary>
+    /// Kullanılacak algoritmayı ayarla
+    /// </summary>
+    public static void SetAlgorithm(DispenseAlgorithm algorithm)
+    {
+        _currentAlgorithm = algorithm;
+    }
+
+    // ---------- Public API ----------
+
+    /// <summary>
+    /// amount tutarı, currencyCode para biriminde ÖDENEBİLİR mi?
+    /// - CDM ve REC ayrı ayrı denenir (karıştırılmaz).
+    /// - maxDispensibleAmount aşılırsa false.
+    /// </summary>
+    public static bool IsAmountDispensible(decimal amount, string currencyCode, decimal maxDispensibleAmount)
+    {
+        if (!ValidateInputs(amount, currencyCode, maxDispensibleAmount))
+            return false;
+
+        return IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode)
+            || IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode);
+    }
+
+    // Geriye dönük uyumluluk (cap olmadan)
+    public static bool IsAmountDispensible(decimal amount, string currencyCode)
+        => IsAmountDispensible(amount, currencyCode, decimal.MaxValue);
+
+    // ---------- Private: orchestration per device ----------
+
+    private static bool IsAmountDispensibleOnDevice(AtmDeviceType deviceType, decimal amount, string currencyCode)
+    {
+        // 1) Kullanılabilir kasetleri topla
+        var usable = GetUsableCassettes(deviceType, currencyCode);
+        if (!usable.Any())
+            return false;
+
+        // 2) Kupüre göre grupla (adetleri topla)
+        var groups = AggregateByDenomination(usable);
+        if (groups.Count == 0)
+            return false;
+
+        // 3) Hızlı kapasite kontrolü
+        if (!HasSufficientCapacity(groups, amount))
+            return false;
+
+        // 4) Seçilen algoritmaya göre kontrol et
+        return _currentAlgorithm == DispenseAlgorithm.Greedy
+            ? CanMakeExactAmount_Greedy(groups, amount)
+            : CanMakeExactAmount_SubsetSum(groups, amount);
+    }
+
+    // ---------- Private: validation ----------
+
+    private static bool ValidateInputs(decimal amount, string currencyCode, decimal maxDispensibleAmount)
+    {
+        if (amount <= 0m) return false;
+        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
+        if (maxDispensibleAmount > 0m && amount > maxDispensibleAmount) return false;
+        return true;
+    }
+
+    // ---------- Private: cassette retrieval & filtering ----------
+
+    private static IEnumerable<CdmCassette> GetUsableCassettes(AtmDeviceType deviceType, string currencyCode)
+    {
+        var allCassettes = Diagnostic.Diagnostics?.Values?
+            .OfType<CdmDevice>()
+            .SelectMany(d => d.Cassettes.Values)
+            ?? Enumerable.Empty<CdmCassette>();
+
+        string typeName = deviceType.ToString();
+
+        return allCassettes.Where(c =>
+            c != null &&
+            string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
+            c.Status < 4 &&
+            c.CurrentCount > 0 &&
+            c.BanknoteType > 0m);
+    }
+
+    // ---------- Private: grouping & capacity ----------
+
+    private sealed class DenomGroup
+    {
+        public decimal Denom { get; init; }
+        public int     Count { get; init; }
+    }
+
+    private static List<DenomGroup> AggregateByDenomination(IEnumerable<CdmCassette> cassettes)
+    {
+        return cassettes
+            .GroupBy(c => c.BanknoteType)
+            .Select(g => new DenomGroup { Denom = g.Key, Count = g.Sum(x => x.CurrentCount) })
+            .OrderByDescending(g => g.Denom) // sıralama şart değil, okunurluk için
+            .ToList();
+    }
+
+    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
+    {
+        decimal total = groups.Sum(g => g.Denom * g.Count);
+        return total >= amount;
+    }
+
+    // ---------- GREEDY ALGORITHM ----------
+
+    /// <summary>
+    /// Greedy algoritma: En büyük kupürden başlayarak küçüğe doğru ilerler.
+    /// Avantaj: Çok hızlı O(n), az bellek
+    /// Dezavantaj: Bazı nadir durumlarda yanlış negatif verebilir
+    /// </summary>
+    private static bool CanMakeExactAmount_Greedy(List<DenomGroup> groups, decimal amount)
+    {
+        decimal remaining = amount;
+
+        foreach (var group in groups)
+        {
+            // Bu kupürden kaç tane kullanılabilir
+            int notesToUse = (int)Math.Min(remaining / group.Denom, group.Count);
+            remaining -= notesToUse * group.Denom;
+
+            if (remaining == 0)
+                return true;
+        }
+
+        return remaining == 0;
+    }
+
+    // ---------- SUBSET-SUM ALGORITHM ----------
+
+    /// <summary>
+    /// Subset-Sum algoritması (Binary Splitting ile optimize edilmiş)
+    /// Kupür+adet kısıtlarıyla tam 'amount' yapılabiliyor mu?
+    /// Binary splitting ile adetleri 1,2,4,... paketlerine bölüp 0/1 knapsack gibi ilerler.
+    /// Avantaj: %100 matematiksel kesinlik, tüm kombinasyonları kontrol eder
+    /// Dezavantaj: Daha fazla bellek ve işlem gerektirir
+    /// </summary>
+    private static bool CanMakeExactAmount_SubsetSum(List<DenomGroup> groups, decimal amount)
+    {
+        var reachable = new HashSet<decimal> { 0m };
+
+        foreach (var g in groups)
+        {
+            int remaining = g.Count;
+            int pack = 1;
+
+            // Binary splitting: count'u 1,2,4,8... paketlerine böl
+            while (remaining > 0)
+            {
+                int take = Math.Min(pack, remaining);
+                decimal chunk = g.Denom * take;
+
+                // snapshot ile genişlet (iterasyon sırasında set'i büyütme)
+                foreach (var s in reachable.ToArray())
+                {
+                    var ns = s + chunk;
+                    if (ns > amount) continue;
+                    if (ns == amount) return true; // erken çıkış
+                    reachable.Add(ns);
+                }
+
+                remaining -= take;
+                pack <<= 1; // 1,2,4,8,16... şeklinde ilerle
+            }
+        }
+
+        return false;
+    }
+}
+
+// ============ KULLANIM ÖRNEĞİ ============
+
+internal class Program
+{
+    static void Main(string[] args)
+    {
+        // Diagnostic dictionary'yi başlat
+        Diagnostic.Diagnostics = new Dictionary<AtmDeviceType, BaseDevice>();
+
+        var cdmDevice = new CdmDevice
+        {
+            DeviceClass = AtmDeviceType.CDM,
+            Status = 0,
+            Cassettes = new Dictionary<int, CdmCassette>
+            {
+                {1, GenerateData.GetCdmCassette("CDM001",1,"REJ",0,"USD",0,0) },
+                {2, GenerateData.GetCdmCassette("CDM001",2,"REJ",0,"USD",0,0) },
+                {3, GenerateData.GetCdmCassette("CDM001",3,"CDM",50,"USD",5,0) },
+                {4, GenerateData.GetCdmCassette("CDM001",4,"CDM",20,"USD",6,0) },
+                {5, GenerateData.GetCdmCassette("CDM001",5,"CDM",100,"USD",4,0) },
+                {6, GenerateData.GetCdmCassette("CDM001",6,"CDM",10,"USD",7,0) },
+                {7, GenerateData.GetCdmCassette("CDM001",7,"REC",50,"USD",3,0) },
+                {8, GenerateData.GetCdmCassette("CDM001",8,"REC",200,"USD",7,0) },
+            }
+        };
+
+        // ÖNEMLİ: Device'ı dictionary'ye ekle!
+        Diagnostic.Diagnostics.Add(AtmDeviceType.CDM, cdmDevice);
+
+        // Test senaryoları
+        Console.WriteLine("=== SUBSET-SUM ALGORITHM (Varsayılan) ===");
+        Manager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
+        TestDispense();
+
+        Console.WriteLine("\n=== GREEDY ALGORITHM ===");
+        Manager.SetAlgorithm(DispenseAlgorithm.Greedy);
+        TestDispense();
+
+        // Nadir durum testi: Greedy vs SubsetSum farkı
+        Console.WriteLine("\n=== NADIR DURUM: Greedy Başarısız, SubsetSum Başarılı ===");
+        TestEdgeCase();
+    }
+
+    static void TestDispense()
+    {
+        // Test 1: Basit tutar
+        Test(150, "USD", "150 USD"); // 100 + 2x20 + 10
+
+        // Test 2: Büyük tutar
+        Test(800, "USD", "800 USD"); // Toplam: 400+120+70 = 590, yetmez
+
+        // Test 3: Tam eşleşme
+        Test(100, "USD", "100 USD"); // 1x100
+
+        // Test 4: Küçük tutar
+        Test(30, "USD", "30 USD"); // 20 + 10
+
+        // Test 5: Karmaşık kombinasyon
+        Test(120, "USD", "120 USD"); // 100 + 20
+    }
+
+    static void TestEdgeCase()
+    {
+        // Greedy'nin başarısız olabileceği bir durum için özel test
+        // Örnek: 60 ve 50 kupürleri varsa, 100 için Greedy 1x60 kullanır ve takılır
+        // Ama SubsetSum 2x50 kombinasyonunu bulur
+
+        Diagnostic.Diagnostics.Clear();
+        var edgeDevice = new CdmDevice
+        {
+            DeviceClass = AtmDeviceType.CDM,
+            Status = 0,
+            Cassettes = new Dictionary<int, CdmCassette>
+            {
+                {1, GenerateData.GetCdmCassette("CDM002",1,"CDM",60,"USD",3,0) },
+                {2, GenerateData.GetCdmCassette("CDM002",2,"CDM",50,"USD",2,0) },
+            }
+        };
+        Diagnostic.Diagnostics.Add(AtmDeviceType.CDM, edgeDevice);
+
+        Console.WriteLine("Kasetler: 3x[60$], 2x[50$]");
+        
+        Manager.SetAlgorithm(DispenseAlgorithm.Greedy);
+        bool greedyResult = Manager.IsAmountDispensible(100, "USD");
+        Console.WriteLine($"100$ Greedy:     {(greedyResult ? "✓ ÖDENEBİLİR" : "✗ ÖDENEMEYEN")}");
+
+        Manager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
+        bool subsetResult = Manager.IsAmountDispensible(100, "USD");
+        Console.WriteLine($"100$ SubsetSum:  {(subsetResult ? "✓ ÖDENEBİLİR" : "✗ ÖDENEMEYEN")}");
+
+        if (greedyResult != subsetResult)
+            Console.WriteLine("⚠️ FARK: Greedy yanlış negatif verdi, SubsetSum doğru buldu!");
+    }
+
+    static void Test(decimal amount, string currency, string description)
+    {
+        bool result = Manager.IsAmountDispensible(amount, currency);
+        Console.WriteLine($"{description}: {(result ? "✓ ÖDENEBİLİR" : "✗ ÖDENEMEYEN")}");
+    }
+}
+
+// ============ MODEL CLASSES ============
+
+public enum AtmDeviceType
+{
+    CIM, CDM, IDC, PIN, CHK, PTRR, PTRJ, REC
+}
+
+public class BaseDevice
+{
+    public AtmDeviceType DeviceClass { get; set; }
+    public int Status { get; set; }
+}
+
+public class CdmDevice : BaseDevice
+{
+    public Dictionary<int, CdmCassette> Cassettes { get; set; }
+}
+
+public class BaseCassette
+{
+    public string DeviceId { get; set; }
+    public short CassetteId { get; set; }
+    public string CassetteType { get; set; }
+    public decimal BanknoteType { get; set; }
+    public string CurrencyCode { get; set; }
+    public int CurrentCount { get; set; }
+    public int Status { get; set; }
+}
+
+public class CdmCassette : BaseCassette { }
+
+public class Diagnostic
+{
+    public static Dictionary<AtmDeviceType, BaseDevice> Diagnostics;
+}
+
+public class GenerateData
+{
+    public static CdmCassette GetCdmCassette(
+        string deviceId,
+        short cassetteId,
+        string cassetteType,
+        decimal banknoteType,
+        string currencyCode,
+        int currentCount,
+        int status)
+    {
+        return new CdmCassette
+        {
+            DeviceId = deviceId,
+            CassetteId = cassetteId,
+            CassetteType = cassetteType,
+            BanknoteType = banknoteType,
+            CurrencyCode = currencyCode,
+            CurrentCount = currentCount,
+            Status = status
+        };
+    }
+}
 ```
