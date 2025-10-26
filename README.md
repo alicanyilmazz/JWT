@@ -1560,3 +1560,148 @@ public static class AtmButtonPlanner
     }
 }
 ```
+------------------DISPENSE GPT-----------------------------
+```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public static class Manager
+{
+    // ---------- Public API ----------
+
+    /// <summary>
+    /// amount tutarı, currencyCode para biriminde ÖDENEBİLİR mi?
+    /// - CDM ve REC ayrı ayrı denenir (karıştırılmaz).
+    /// - maxDispensibleAmount aşılırsa false.
+    /// </summary>
+    public static bool IsAmountDispensible(decimal amount, string currencyCode, decimal maxDispensibleAmount)
+    {
+        if (!ValidateInputs(amount, currencyCode, maxDispensibleAmount))
+            return false;
+
+        return IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode)
+            || IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode);
+    }
+
+    // Geriye dönük uyumluluk (cap olmadan)
+    public static bool IsAmountDispensible(decimal amount, string currencyCode)
+        => IsAmountDispensible(amount, currencyCode, decimal.MaxValue);
+
+    // ---------- Private: orchestration per device ----------
+
+    private static bool IsAmountDispensibleOnDevice(AtmDeviceType deviceType, decimal amount, string currencyCode)
+    {
+        // 1) Kullanılabilir kasetleri topla
+        var usable = GetUsableCassettes(deviceType, currencyCode);
+        if (!usable.Any())
+            return false;
+
+        // 2) Kupüre göre grupla (adetleri topla)
+        var groups = AggregateByDenomination(usable);
+        if (groups.Count == 0)
+            return false;
+
+        // 3) Hızlı kapasite kontrolü
+        if (!HasSufficientCapacity(groups, amount))
+            return false;
+
+        // 4) Kısıtlı knapsack ile tam tutar var mı?
+        return CanMakeExactAmount(groups, amount);
+    }
+
+    // ---------- Private: validation ----------
+
+    private static bool ValidateInputs(decimal amount, string currencyCode, decimal maxDispensibleAmount)
+    {
+        if (amount <= 0m) return false;
+        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
+        if (maxDispensibleAmount > 0m && amount > maxDispensibleAmount) return false;
+        return true;
+    }
+
+    // ---------- Private: cassette retrieval & filtering ----------
+
+    private static IEnumerable<CdmCassette> GetUsableCassettes(AtmDeviceType deviceType, string currencyCode)
+    {
+        var allCassettes = Diagnostic.Diagnostics?.Values?
+            .OfType<CdmDevice>()
+            .SelectMany(d => d.Cassettes.Values)
+            ?? Enumerable.Empty<CdmCassette>();
+
+        string typeName = deviceType.ToString();
+
+        return allCassettes.Where(c =>
+            c != null &&
+            string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
+            c.Status < 4 &&
+            c.CurrentCount > 0 &&
+            c.BanknoteType > 0m);
+    }
+
+    // ---------- Private: grouping & capacity ----------
+
+    private sealed class DenomGroup
+    {
+        public decimal Denom { get; init; }
+        public int     Count { get; init; }
+    }
+
+    private static List<DenomGroup> AggregateByDenomination(IEnumerable<CdmCassette> cassettes)
+    {
+        return cassettes
+            .GroupBy(c => c.BanknoteType)
+            .Select(g => new DenomGroup { Denom = g.Key, Count = g.Sum(x => x.CurrentCount) })
+            .OrderByDescending(g => g.Denom) // sıralama şart değil, okunurluk için
+            .ToList();
+    }
+
+    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
+    {
+        decimal total = groups.Sum(g => g.Denom * g.Count);
+        return total >= amount;
+    }
+
+    // ---------- Private: bounded subset-sum (binary splitting) ----------
+
+    /// <summary>
+    /// Kupür+adet kısıtlarıyla tam 'amount' yapılabiliyor mu?
+    /// Binary splitting ile adetleri 1,2,4,... paketlerine bölüp 0/1 knapsack gibi ilerler.
+    /// </summary>
+    private static bool CanMakeExactAmount(List<DenomGroup> groups, decimal amount)
+    {
+        var reachable = new HashSet<decimal> { 0m };
+
+        foreach (var g in groups)
+        {
+            int remaining = g.Count;
+            int pack = 1;
+
+            while (remaining > 0)
+            {
+                int take = Math.Min(pack, remaining);
+                decimal chunk = g.Denom * take;
+
+                // snapshot ile genişlet (iterasyon sırasında set'i büyütme)
+                foreach (var s in reachable.ToArray())
+                {
+                    var ns = s + chunk;
+                    if (ns > amount) continue;
+                    if (ns == amount) return true; // erken çıkış
+                    reachable.Add(ns);
+                }
+
+                remaining -= take;
+                pack <<= 1;
+            }
+        }
+
+        return false;
+    }
+}
+
+```
+------------------DISPENSE PRO-----------------------------
+```c#
+```
