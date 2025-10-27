@@ -2827,7 +2827,7 @@ public class GenerateData
 ```
 ------------------DISPENSE CLAUDE-----------------------------
 ```c#
-private sealed class DisabledSlotFiller
+ private sealed class DisabledSlotFiller
     {
         private readonly IList<PredefinedAmount> _slots;
         private readonly IReadOnlyDictionary<string, decimal> _baselineByIndex;
@@ -2864,7 +2864,7 @@ private sealed class DisabledSlotFiller
 
             var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
 
-            // Kaç disabled slot dolduracağız?
+            // Doldurulacak disabled slotlar (baseline sırası)
             var toFill = _slots
                 .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
                 .OrderBy(s => _baselineByIndex[s.Index])
@@ -2872,20 +2872,22 @@ private sealed class DisabledSlotFiller
 
             if (toFill.Count == 0) return;
 
-            // Makul bir üst limit: max banknotes veya 400
-            const int MaxTrials = 400;
-            int kMax = Math.Min(_maxBanknotes, MaxTrials);
+            // Gerekli aday sayısı kadar üret; sonsuz aramayı engelle
+            int need = toFill.Count;
+            int maxTrials = Math.Max(1000, 10 * _maxBanknotes); // Dinamik limit
+            var candidates = new List<decimal>(need);
 
-            // TÜM adayları önceden hesapla (tek seferde, verimli)
-            // baseUnit × k şeklinde katlar oluştur ve dispense edilebilir olanları filtrele
-            var candidates = Enumerable.Range(1, kMax)
-                .Select(k => baseUnit * k)
-                .Where(amount => 
-                    !used.Contains(amount) && 
-                    Manager.IsAmountDispensible(amount, currency, _maxBanknotes))
-                .ToList();
+            for (int k = 1; k <= maxTrials && candidates.Count < need; k++)
+            {
+                var cand = baseUnit * k;
+                if (used.Contains(cand)) continue;
 
-            // Artık sadece hazır listeden al ve yerleştir
+                // Asıl kritik: banknot limiti içinde gerçekten ödenebilir mi?
+                if (Manager.IsAmountDispensible(cand, currency, _maxBanknotes))
+                    candidates.Add(cand);
+            }
+
+            // Adayları slotlara yerleştir
             int calcNo = 1;
             foreach (var slot in toFill)
             {
@@ -2899,8 +2901,9 @@ private sealed class DisabledSlotFiller
                 slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
                 slot.IsDispensible = true;
 
-                used.Add(cand); // bir sonraki iterasyonda çakışma olmasın
+                used.Add(cand);
             }
+            // aday yetmezse kalanlar disabled kalır (dokunma)
         }
     }
 
