@@ -2825,3 +2825,88 @@ public class GenerateData
     }
 }
 ```
+------------------DISPENSE CLAUDE-----------------------------
+```c#
+private sealed class DisabledSlotFiller
+    {
+        private readonly IList<PredefinedAmount> _slots;
+        private readonly IReadOnlyDictionary<string, decimal> _baselineByIndex;
+        private readonly int _maxBanknotes;
+        private readonly string _calcPrefix;
+
+        public DisabledSlotFiller(
+            IList<PredefinedAmount> slots,
+            IReadOnlyDictionary<string, decimal> baselineByIndex,
+            int maxBanknotes,
+            string calcPrefix = DefaultCalcPrefix)
+        {
+            _slots = slots ?? throw new ArgumentNullException(nameof(slots));
+            _baselineByIndex = baselineByIndex ?? throw new ArgumentNullException(nameof(baselineByIndex));
+            _maxBanknotes = maxBanknotes > 0 ? maxBanknotes : int.MaxValue;
+            _calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
+        }
+
+        public void FillSlots()
+        {
+            if (_slots.Count == 0) return;
+            ValidateBaselineCoverage(_slots, _baselineByIndex);
+
+            var currency = _slots[0].CurrencyCode;
+
+            // BASE = listedeki en küçük ÖDENEBİLİR tutar
+            var baseUnit = _slots
+                .Where(s => s.IsDispensible)
+                .Select(s => s.Amount)
+                .DefaultIfEmpty(0m)
+                .Min();
+
+            if (baseUnit <= 0m) return;
+
+            var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
+
+            // Kaç disabled slot dolduracağız?
+            var toFill = _slots
+                .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+                .OrderBy(s => _baselineByIndex[s.Index])
+                .ToList();
+
+            if (toFill.Count == 0) return;
+
+            // Makul bir üst limit: max banknotes veya 400
+            const int MaxTrials = 400;
+            int kMax = Math.Min(_maxBanknotes, MaxTrials);
+
+            // TÜM adayları önceden hesapla (tek seferde, verimli)
+            // baseUnit × k şeklinde katlar oluştur ve dispense edilebilir olanları filtrele
+            var candidates = Enumerable.Range(1, kMax)
+                .Select(k => baseUnit * k)
+                .Where(amount => 
+                    !used.Contains(amount) && 
+                    Manager.IsAmountDispensible(amount, currency, _maxBanknotes))
+                .ToList();
+
+            // Artık sadece hazır listeden al ve yerleştir
+            int calcNo = 1;
+            foreach (var slot in toFill)
+            {
+                if (candidates.Count == 0) break; // aday bitti → kalanlar disabled kalır
+
+                var cand = candidates[0];
+                candidates.RemoveAt(0);
+
+                slot.Amount        = cand;
+                slot.AmountSource  = AmountSource.Calculated;
+                slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
+                slot.IsDispensible = true;
+
+                used.Add(cand); // bir sonraki iterasyonda çakışma olmasın
+            }
+        }
+    }
+
+```
+
+------------------DISPENSE C-----------------------------
+```c#
+
+```
