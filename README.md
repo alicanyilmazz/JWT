@@ -3903,5 +3903,241 @@ public class Example
 ```
 ------------------LAST GPT SK2-----------------------------
 ```c#
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public enum DispenseAlgorithm { Greedy, SubsetSum }
+
+public static class DispensibilityManager
+{
+    // ---- Ayarlar (varsayılanlar) ----
+    private static DispenseAlgorithm _algorithm = DispenseAlgorithm.SubsetSum; // kesin doğruluk
+    private static int _maxDispensibleItems = 40; // tek çekimde en fazla banknot adedi
+
+    public static void SetAlgorithm(DispenseAlgorithm algorithm) => _algorithm = algorithm;
+
+    public static void SetMaxDispensibleItems(int maxItems)
+        => _maxDispensibleItems = maxItems > 0 ? maxItems : 40;
+
+    // ---- Dış API (overload’lar) ----
+
+    /// <summary>
+    /// amount tutarı, currencyCode para biriminde **tek çekimde** ödenebilir mi?
+    /// CDM ve REC ayrı ayrı denenir; herhangi biri başarırsa true.
+    /// maxDispensibleItems: tek çekimde kullanılabilecek azami banknot adedi.
+    /// </summary>
+    public static bool IsAmountDispensible(decimal amount, string currencyCode, int maxDispensibleItems)
+    {
+        if (!ValidateInputs(amount, currencyCode)) return false;
+
+        var prev = _maxDispensibleItems;
+        _maxDispensibleItems = maxDispensibleItems;
+
+        bool result =
+            IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode) ||
+            IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode);
+
+        _maxDispensibleItems = prev;
+        return result;
+    }
+
+    /// <summary>
+    /// Varsayılan _maxDispensibleItems ile çalışır.
+    /// </summary>
+    public static bool IsAmountDispensible(decimal amount, string currencyCode)
+        => IsAmountDispensible(amount, currencyCode, _maxDispensibleItems);
+
+    // ---- Maksimum ödenebilir tutar (cap) hesaplama ----
+
+    /// <summary>
+    /// Verilen cihaz türü için, mevcut kasetlerle **tek çekimde** teorik maksimum tutarı hesaplar.
+    /// Büyük kupürden başlayıp banknot limitine kadar toplar.
+    /// </summary>
+    public static decimal ComputeDeviceMaxAmount(
+        AtmDeviceType deviceType,
+        string currencyCode,
+        int? maxDispensibleItems = null,
+        decimal? hardCapAmount   = null)
+    {
+        if (string.IsNullOrWhiteSpace(currencyCode)) return 0m;
+
+        int limit = maxDispensibleItems.HasValue && maxDispensibleItems.Value > 0
+            ? maxDispensibleItems.Value
+            : _maxDispensibleItems;
+
+        var usable = GetUsableCassettes(deviceType, currencyCode);
+        var groups = AggregateByDenomination(usable);
+        if (groups.Count == 0 || limit <= 0) return 0m;
+
+        int remaining = limit;
+        decimal sum = 0m;
+
+        // büyükten küçüğe
+        foreach (var g in groups)
+        {
+            if (remaining == 0) break;
+            int use = Math.Min(remaining, g.Count);
+            sum += g.Denom * use;
+            remaining -= use;
+        }
+
+        if (hardCapAmount.HasValue && sum > hardCapAmount.Value)
+            sum = hardCapAmount.Value;
+
+        return sum;
+    }
+
+    /// <summary>
+    /// CDM ve REC için ayrı ayrı cap hesaplar; en büyüğünü döner.
+    /// </summary>
+    public static decimal ComputeGlobalMaxAmount(
+        string currencyCode,
+        int? maxDispensibleItems = null,
+        decimal? hardCapAmount   = null)
+    {
+        var cdm = ComputeDeviceMaxAmount(AtmDeviceType.CDM, currencyCode, maxDispensibleItems, hardCapAmount);
+        var rec = ComputeDeviceMaxAmount(AtmDeviceType.REC, currencyCode, maxDispensibleItems, hardCapAmount);
+        return Math.Max(cdm, rec);
+    }
+
+    // ---- İç yardımcılar / core ----
+
+    private static bool IsAmountDispensibleOnDevice(AtmDeviceType deviceType, decimal amount, string currencyCode)
+    {
+        var usable = GetUsableCassettes(deviceType, currencyCode);
+        if (!usable.Any()) return false;
+
+        var groups = AggregateByDenomination(usable);
+        if (groups.Count == 0) return false;
+
+        if (!HasSufficientCapacity(groups, amount)) return false;
+
+        return _algorithm == DispenseAlgorithm.Greedy
+            ? CanMakeExactAmount_Greedy(groups, amount)
+            : CanMakeExactAmount_SubsetSum(groups, amount);
+    }
+
+    private static bool ValidateInputs(decimal amount, string currencyCode)
+    {
+        if (amount <= 0m) return false;
+        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
+        return true;
+    }
+
+    // Cihaz kasetlerini filtrele: tip, currency, durum, sayım, kupür
+    private static IEnumerable<CdmCassette> GetUsableCassettes(AtmDeviceType deviceType, string currencyCode)
+    {
+        // Ortamına göre bu satırı Diagnostic/THManager yapısı ile değiştir.
+        var all = THManager.Instance
+                           .LastDiagnosticDevicesState?
+                           .Values?
+                           .OfType<CdmDevice>()
+                           .SelectMany(d => d.Cassettes.Values)
+                  ?? Enumerable.Empty<CdmCassette>();
+
+        string typeName = deviceType.ToString();
+
+        return all.Where(c =>
+            c != null &&
+            string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
+            c.Status < 4 &&
+            c.CurrentCount > 0 &&
+            c.BanknoteType > 0m);
+    }
+
+    // Kupüre göre grupla (aynı kupürden birden çok kaset varsa adetleri topla)
+    public sealed class DenomGroup
+    {
+        public decimal Denom { get; }
+        public int     Count { get; }
+        public DenomGroup(int count, decimal denom) { Count = count; Denom = denom; }
+    }
+
+    private static List<DenomGroup> AggregateByDenomination(IEnumerable<CdmCassette> cassettes) =>
+        cassettes
+            .GroupBy(c => c.BanknoteType)
+            .Select(g => new DenomGroup(g.Sum(x => x.CurrentCount), g.Key))
+            .OrderByDescending(g => g.Denom)
+            .ToList();
+
+    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
+        => groups.Sum(g => g.Denom * g.Count) >= amount;
+
+    // Çok hızlı ama nadir durumlarda false-negative verebilir
+    private static bool CanMakeExactAmount_Greedy(List<DenomGroup> groups, decimal amount)
+    {
+        decimal remaining = amount;
+        int totalUsed = 0;
+
+        foreach (var g in groups)
+        {
+            int maxByAmount = (int)(remaining / g.Denom);
+            int maxByCount  = g.Count;
+            int maxByLimit  = _maxDispensibleItems - totalUsed;
+
+            int use = Math.Min(Math.Min(maxByAmount, maxByCount), maxByLimit);
+
+            remaining -= use * g.Denom;
+            totalUsed += use;
+
+            if (remaining == 0) return true;
+            if (totalUsed >= _maxDispensibleItems) return false;
+        }
+
+        return remaining == 0;
+    }
+
+    // Kesin doğru: bounded subset-sum (binary splitting) + min banknot takipli
+    private static bool CanMakeExactAmount_SubsetSum(List<DenomGroup> groups, decimal amount)
+    {
+        if (amount <= 0m || _maxDispensibleItems <= 0) return false;
+
+        var valid = groups.Where(g => g.Denom > 0m && g.Count > 0)
+                          .OrderByDescending(g => g.Denom)
+                          .ToList();
+        if (valid.Count == 0) return false;
+
+        // Erken çıkış: kapasite yetmiyorsa uğraşma
+        if (!HasSufficientCapacity(valid, amount)) return false;
+
+        // reachable[sum] = bu suma en az kaç banknotla ulaşıldı
+        var reachable = new Dictionary<decimal, int> { [0m] = 0 };
+
+        foreach (var g in valid)
+        {
+            int remaining = g.Count;
+            int pack = 1;
+
+            // 1,2,4,... paketlerine böl → 0/1 knapsack gibi ilerle
+            while (remaining > 0)
+            {
+                int take = Math.Min(pack, remaining);
+                decimal chunkValue = g.Denom * take;
+                int chunkNotes = take;
+
+                foreach (var kv in reachable.ToArray()) // snapshot üzerinden genişlet
+                {
+                    decimal newAmount = kv.Key + chunkValue;
+                    if (newAmount > amount) continue;
+
+                    int newNotes = kv.Value + chunkNotes;
+                    if (newNotes > _maxDispensibleItems) continue;
+
+                    if (newAmount == amount) return true;
+
+                    if (!reachable.TryGetValue(newAmount, out var best) || newNotes < best)
+                        reachable[newAmount] = newNotes;
+                }
+
+                remaining -= take;
+                pack <<= 1;
+            }
+        }
+
+        return false;
+    }
+}
 
 ```
