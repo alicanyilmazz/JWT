@@ -3309,12 +3309,16 @@ public static class PredefinedAmountManager
 
             if (toFill.Count == 0) return;
 
-            // Dinamik maksimum deneme sayısı
+            // Kaset bilgilerinden maksimum dispensible amount'u hesapla
+            decimal maxDispensibleAmount = CalculateMaxDispensibleAmount(currency, _maxBanknotes);
+            if (maxDispensibleAmount <= 0m) return;
+
+            // baseUnit'in kaç katına kadar çıkabiliriz?
+            int maxMultiplier = (int)Math.Floor(maxDispensibleAmount / baseUnit);
             int need = toFill.Count;
-            int maxTrials = Math.Max(1000, 10 * _maxBanknotes);
             var candidates = new List<decimal>(need);
 
-            for (int k = 1; k <= maxTrials && candidates.Count < need; k++)
+            for (int k = 1; k <= maxMultiplier && candidates.Count < need; k++)
             {
                 var cand = baseUnit * k;
                 if (used.Contains(cand)) continue;
@@ -3340,6 +3344,95 @@ public static class PredefinedAmountManager
                 used.Add(cand);
             }
         }
+
+        /// <summary>
+        /// Kaset bilgilerinden maksimum dispensible amount'u hesaplar.
+        /// Greedy yaklaşım: En büyük kupürden başlayarak maxBanknotes kadar banknot kullan.
+        /// </summary>
+        private static decimal CalculateMaxDispensibleAmount(string currency, int maxBanknotes)
+        {
+            // Manager'dan kaset bilgilerini al
+            var cassettes = GetUsableCassettes(currency);
+            if (!cassettes.Any()) return 0m;
+
+            // Kupüre göre grupla ve topla
+            var groups = cassettes
+                .GroupBy(c => c.BanknoteType)
+                .Select(g => new { Denom = g.Key, Count = g.Sum(x => x.CurrentCount) })
+                .OrderByDescending(g => g.Denom)
+                .ToList();
+
+            // Greedy: En büyük kupürden başla, maxBanknotes kadar doldur
+            decimal maxAmount = 0m;
+            int remainingNotes = maxBanknotes;
+
+            foreach (var group in groups)
+            {
+                int take = Math.Min(group.Count, remainingNotes);
+                maxAmount += group.Denom * take;
+                remainingNotes -= take;
+
+                if (remainingNotes == 0) break;
+            }
+
+            return maxAmount;
+        }
+
+        /// <summary>
+        /// Manager sınıfından kullanılabilir kasetleri çeker (örnek implementasyon)
+        /// </summary>
+        private static IEnumerable<dynamic> GetUsableCassettes(string currency)
+        {
+            // TODO: Burası gerçek Manager implementasyonuna göre değişmeli
+            // Örnek: Manager.GetUsableCassettes(currency) gibi bir metod olmalı
+            
+            // Geçici çözüm: Diagnostic'ten kasetleri al
+            try
+            {
+                var allCassettes = Diagnostic.Diagnostics?.Values?
+                    .OfType<CdmDevice>()
+                    .SelectMany(d => d.Cassettes.Values)
+                    ?? Enumerable.Empty<CdmCassette>();
+
+                return allCassettes.Where(c =>
+                    c != null &&
+                    string.Equals(c.CurrencyCode, currency, StringComparison.OrdinalIgnoreCase) &&
+                    c.Status < 4 &&
+                    c.CurrentCount > 0 &&
+                    c.BanknoteType > 0m);
+            }
+            catch
+            {
+                // Fallback: Kaset bilgisi alınamazsa güvenli bir varsayılan değer dön
+                return Enumerable.Empty<dynamic>();
+            }
+        }
+    }
+}
+
+// ============= KULLANIM ÖRNEĞİ =============
+public class Example
+{
+    public static void Usage()
+    {
+        // Örnek 1: Sadece flag kontrolü
+        var predefined = new List<PredefinedAmount>
+        {
+            new PredefinedAmount("pre_1", 50m, "USD"),
+            new PredefinedAmount("pre_2", 100m, "USD"),
+            new PredefinedAmount("pre_3", 200m, "USD")
+        };
+
+        PredefinedAmountManager.GetAmounts(predefined, maxDispensibleNotes: 40);
+
+        // Örnek 2: Suggested amounts ile birlikte
+        var suggested = new List<SuggestedAmount>
+        {
+            new SuggestedAmount("sgg_1", 75m, "USD"),
+            new SuggestedAmount("sgg_2", 150m, "USD")
+        };
+
+        PredefinedAmountManager.GetAmounts(predefined, suggested, maxDispensibleNotes: 40);
     }
 }
 ```
