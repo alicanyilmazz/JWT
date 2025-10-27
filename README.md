@@ -3582,227 +3582,6 @@ public sealed class PredefinedAmount : BaseAmount
 
 #endregion
 
-#region Dispensibility Manager
-
-public enum DispenseAlgorithm
-{
-    Greedy,
-    SubsetSum
-}
-
-public static class DispensibilityManager
-{
-    private static DispenseAlgorithm _currentAlgorithm = DispenseAlgorithm.SubsetSum;
-    private static int _maxDispensibleItems = 40;
-
-    // ====== Configuration ======
-
-    public static void SetAlgorithm(DispenseAlgorithm algorithm)
-    {
-        _currentAlgorithm = algorithm;
-    }
-
-    public static void SetMaxDispensibleItems(int maxItems)
-    {
-        _maxDispensibleItems = maxItems > 0 ? maxItems : int.MaxValue;
-    }
-
-    // ====== Public API ======
-
-    /// <summary>
-    /// amount tutarı ödenebilir mi? CDM ve REC ayrı ayrı denenir.
-    /// </summary>
-    public static bool IsAmountDispensible(decimal amount, string currencyCode)
-    {
-        return IsAmountDispensible(amount, currencyCode, _maxDispensibleItems);
-    }
-
-    public static bool IsAmountDispensible(decimal amount, string currencyCode, int maxDispensibleItems)
-    {
-        if (!ValidateInputs(amount, currencyCode)) return false;
-
-        return IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode, maxDispensibleItems)
-            || IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode, maxDispensibleItems);
-    }
-
-    /// <summary>
-    /// Belirli bir device için maksimum dispensible amount'u hesaplar.
-    /// Greedy yaklaşım: En büyük kupürden başlayarak maxDispensibleItems kadar toplar.
-    /// </summary>
-    public static decimal ComputeDeviceMaxAmount(
-        AtmDeviceType deviceType,
-        string currencyCode,
-        int maxDispensibleItems)
-    {
-        if (string.IsNullOrWhiteSpace(currencyCode)) return 0m;
-        if (maxDispensibleItems <= 0) return 0m;
-
-        var groups = GetUsableGroups(deviceType, currencyCode);
-        if (groups.Count == 0) return 0m;
-
-        int remaining = maxDispensibleItems;
-        decimal sum = 0m;
-
-        foreach (var g in groups) // büyükten küçüğe sıralı
-        {
-            if (remaining == 0) break;
-            int use = Math.Min(remaining, g.Count);
-            sum += g.Denom * use;
-            remaining -= use;
-        }
-
-        return sum;
-    }
-
-    /// <summary>
-    /// Tüm device'lar (CDM + REC) için maksimum dispensible amount'u hesaplar.
-    /// İkisinden büyük olanı döner.
-    /// </summary>
-    public static decimal ComputeGlobalMaxAmount(string currencyCode, int maxDispensibleItems)
-    {
-        var cdmMax = ComputeDeviceMaxAmount(AtmDeviceType.CDM, currencyCode, maxDispensibleItems);
-        var recMax = ComputeDeviceMaxAmount(AtmDeviceType.REC, currencyCode, maxDispensibleItems);
-        return Math.Max(cdmMax, recMax);
-    }
-
-    // ====== Private Implementation ======
-
-    private static bool ValidateInputs(decimal amount, string currencyCode)
-    {
-        if (amount <= 0m) return false;
-        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
-        return true;
-    }
-
-    private static bool IsAmountDispensibleOnDevice(
-        AtmDeviceType deviceType,
-        decimal amount,
-        string currencyCode,
-        int maxDispensibleItems)
-    {
-        var groups = GetUsableGroups(deviceType, currencyCode);
-        if (groups.Count == 0) return false;
-
-        // Hızlı kapasite kontrolü
-        if (!HasSufficientCapacity(groups, amount)) return false;
-
-        // Seçilen algoritmaya göre kontrol
-        return _currentAlgorithm == DispenseAlgorithm.Greedy
-            ? CanMakeExactAmount_Greedy(groups, amount, maxDispensibleItems)
-            : CanMakeExactAmount_SubsetSum(groups, amount, maxDispensibleItems);
-    }
-
-    private static List<DenomGroup> GetUsableGroups(AtmDeviceType deviceType, string currencyCode)
-    {
-        var allCassettes = Diagnostic.Diagnostics?.Values?
-            .OfType<CdmDevice>()
-            .SelectMany(d => d.Cassettes.Values)
-            ?? Enumerable.Empty<CdmCassette>();
-
-        string typeName = deviceType.ToString();
-
-        return allCassettes
-            .Where(c =>
-                c != null &&
-                string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
-                c.Status < 4 &&
-                c.CurrentCount > 0 &&
-                c.BanknoteType > 0m)
-            .GroupBy(c => c.BanknoteType)
-            .Select(g => new DenomGroup { Denom = g.Key, Count = g.Sum(x => x.CurrentCount) })
-            .OrderByDescending(g => g.Denom)
-            .ToList();
-    }
-
-    private sealed class DenomGroup
-    {
-        public decimal Denom { get; init; }
-        public int Count { get; init; }
-    }
-
-    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
-    {
-        decimal total = groups.Sum(g => g.Denom * g.Count);
-        return total >= amount;
-    }
-
-    // ====== GREEDY ALGORITHM ======
-
-    private static bool CanMakeExactAmount_Greedy(List<DenomGroup> groups, decimal amount, int maxDispensibleItems)
-    {
-        decimal remaining = amount;
-        int totalNotesUsed = 0;
-
-        foreach (var group in groups)
-        {
-            int maxByAmount = (int)(remaining / group.Denom);
-            int maxByCount = group.Count;
-            int maxByLimit = maxDispensibleItems - totalNotesUsed;
-
-            int notesToUse = Math.Min(Math.Min(maxByAmount, maxByCount), maxByLimit);
-
-            remaining -= notesToUse * group.Denom;
-            totalNotesUsed += notesToUse;
-
-            if (remaining == 0) return true;
-            if (totalNotesUsed >= maxDispensibleItems) return false;
-        }
-
-        return remaining == 0;
-    }
-
-    // ====== SUBSET-SUM ALGORITHM ======
-
-    private static bool CanMakeExactAmount_SubsetSum(List<DenomGroup> groups, decimal amount, int maxDispensibleItems)
-    {
-        if (amount <= 0m || maxDispensibleItems <= 0) return false;
-
-        var validGroups = groups
-            .Where(g => g.Denom > 0m && g.Count > 0)
-            .OrderByDescending(g => g.Denom)
-            .ToList();
-
-        if (validGroups.Count == 0) return false;
-
-        var reachable = new Dictionary<decimal, int> { [0m] = 0 };
-
-        foreach (var g in validGroups)
-        {
-            int remaining = g.Count;
-            int pack = 1;
-
-            while (remaining > 0)
-            {
-                int take = Math.Min(pack, remaining);
-                decimal chunkValue = g.Denom * take;
-                int chunkNotes = take;
-
-                foreach (var kv in reachable.ToArray())
-                {
-                    decimal newAmount = kv.Key + chunkValue;
-                    if (newAmount > amount) continue;
-
-                    int newNotes = kv.Value + chunkNotes;
-                    if (newNotes > maxDispensibleItems) continue;
-
-                    if (newAmount == amount) return true;
-
-                    if (!reachable.TryGetValue(newAmount, out var bestNotes) || newNotes < bestNotes)
-                        reachable[newAmount] = newNotes;
-                }
-
-                remaining -= take;
-                pack <<= 1;
-            }
-        }
-
-        return false;
-    }
-}
-
-#endregion
-
 #region Predefined Amount Manager
 
 public static class PredefinedAmountManager
@@ -3811,6 +3590,9 @@ public static class PredefinedAmountManager
 
     // ====== Helpers ======
 
+    /// <summary>
+    /// Verilen item'ların IsDispensible flag'lerini günceller
+    /// </summary>
     public static void SetDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
     {
         if (items == null) return;
@@ -3819,10 +3601,16 @@ public static class PredefinedAmountManager
             x.IsDispensible = DispensibilityManager.IsAmountDispensible(x.Amount, x.CurrencyCode);
     }
 
+    /// <summary>
+    /// Predefined amount'ların baseline snapshot'ını oluşturur
+    /// </summary>
     public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmount> pre)
         => pre?.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal)
            ?? new Dictionary<string, decimal>();
 
+    /// <summary>
+    /// Baseline sözlüğünün tüm slot index'lerini kapsadığını doğrular
+    /// </summary>
     private static void ValidateBaselineCoverage(
         IList<PredefinedAmount> slots,
         IReadOnlyDictionary<string, decimal> baselineByIndex)
@@ -3830,9 +3618,14 @@ public static class PredefinedAmountManager
         if (slots == null) throw new ArgumentNullException(nameof(slots));
         if (baselineByIndex == null) throw new ArgumentNullException(nameof(baselineByIndex));
 
-        var missing = slots.Select(s => s.Index).Where(i => !baselineByIndex.ContainsKey(i)).ToList();
-        if (missing.Count > 0)
-            throw new ArgumentException($"Baseline sözlüğü şu indexleri içermiyor: {string.Join(", ", missing)}");
+        var missing = slots
+            .Select(s => s.Index)
+            .Where(idx => !baselineByIndex.ContainsKey(idx))
+            .ToList();
+
+        if (missing.Any())
+            throw new ArgumentException(
+                $"Baseline sözlüğü şu index değerlerini içermiyor: {string.Join(", ", missing)}");
     }
 
     // ====== Public API ======
@@ -3844,7 +3637,7 @@ public static class PredefinedAmountManager
         return predefinedAmounts ?? new List<PredefinedAmount>();
     }
 
-    /// <summary>Suggested → Replace → Fill</summary>
+    /// <summary>Suggested → Replace (enabled→disabled) → Fill (multiples)</summary>
     public static IList<PredefinedAmount> GetAmounts(
         IList<PredefinedAmount> predefinedAmounts,
         IList<SuggestedAmount> suggestedAmounts)
@@ -3890,16 +3683,19 @@ public static class PredefinedAmountManager
             if (_predefinedAmounts.Count == 0 || _remainingSuggestedAmounts.Count == 0) return;
             ValidateBaselineCoverage(_predefinedAmounts, _baselineByIndex);
 
+            // 1) ENABLE → 2) DISABLE
             ReplaceInPhase(isDispensible: true);
             ReplaceInPhase(isDispensible: false);
         }
 
         private void ReplaceInPhase(bool isDispensible)
         {
+            // Geriye doğru iterate ederek RemoveAt O(1)
             for (int i = _remainingSuggestedAmounts.Count - 1; i >= 0; i--)
             {
                 var api = _remainingSuggestedAmounts[i];
 
+                // Aynı tutarı ikinci kez yerleştirme
                 if (_currentAmounts.Contains(api.Amount))
                     continue;
 
@@ -3967,7 +3763,7 @@ public static class PredefinedAmountManager
 
             var currency = _slots[0].CurrencyCode;
 
-            // BASE = listedeki en küçük ÖDENEBİLİR tutar
+            // BASE = listedeki en küçük ÖDENEBİLİR tutar (replacement sonrası)
             var baseUnit = _slots
                 .Where(s => s.IsDispensible)
                 .Select(s => s.Amount)
@@ -3977,6 +3773,8 @@ public static class PredefinedAmountManager
             if (baseUnit <= 0m) return;
 
             var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
+
+            // Doldurulacak disabled slotlar (baseline sırası)
             var toFill = _slots
                 .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
                 .OrderBy(s => _baselineByIndex[s.Index])
@@ -3985,10 +3783,7 @@ public static class PredefinedAmountManager
             if (toFill.Count == 0) return;
 
             // Kasetlerden maksimum dispensible amount'u hesapla
-            int maxDispensibleItems = DispensibilityManager._maxDispensibleItems;
-            decimal maxDispensibleAmount = DispensibilityManager.ComputeGlobalMaxAmount(
-                currency, 
-                maxDispensibleItems);
+            decimal maxDispensibleAmount = DispensibilityManager.ComputeGlobalMaxAmount(currency);
 
             if (maxDispensibleAmount <= 0m) return;
 
@@ -4002,14 +3797,16 @@ public static class PredefinedAmountManager
                 var cand = baseUnit * k;
                 if (used.Contains(cand)) continue;
 
-                if (DispensibilityManager.IsAmountDispensible(cand, currency, maxDispensibleItems))
+                // Asıl kritik: gerçekten ödenebilir mi?
+                if (DispensibilityManager.IsAmountDispensible(cand, currency))
                     candidates.Add(cand);
             }
 
+            // Adayları slotlara yerleştir
             int calcNo = 1;
             foreach (var slot in toFill)
             {
-                if (candidates.Count == 0) break;
+                if (candidates.Count == 0) break; // aday bitti → kalanlar disabled kalır
 
                 var cand = candidates[0];
                 candidates.RemoveAt(0);
@@ -4027,39 +3824,82 @@ public static class PredefinedAmountManager
 
 #endregion
 
-// ============= KULLANIM ÖRNEĞİ =============
+#region Usage Example
+
 public class Example
 {
     public static void Usage()
     {
-        // Konfigürasyon
+        // ====== Konfigürasyon ======
         DispensibilityManager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
         DispensibilityManager.SetMaxDispensibleItems(40);
 
+        // ====== Örnek 1: Sadece flag kontrolü ======
         var predefined = new List<PredefinedAmount>
         {
-            new PredefinedAmount("pre_1", 50m, "USD"),
-            new PredefinedAmount("pre_2", 100m, "USD"),
-            new PredefinedAmount("pre_3", 200m, "USD")
+            new PredefinedAmount("pre_1", 50m, "TRY"),
+            new PredefinedAmount("pre_2", 100m, "TRY"),
+            new PredefinedAmount("pre_3", 200m, "TRY"),
+            new PredefinedAmount("pre_4", 500m, "TRY")
+        };
+
+        PredefinedAmountManager.GetAmounts(predefined);
+
+        Console.WriteLine("=== Sadece Flag Kontrolü ===");
+        foreach (var p in predefined)
+            Console.WriteLine($"{p.Index}: {p.Amount} TRY - Dispensible: {p.IsDispensible}");
+
+        // ====== Örnek 2: Suggested amounts ile Replace + Fill ======
+        var predefined2 = new List<PredefinedAmount>
+        {
+            new PredefinedAmount("pre_1", 50m, "TRY"),
+            new PredefinedAmount("pre_2", 100m, "TRY"),
+            new PredefinedAmount("pre_3", 200m, "TRY"),
+            new PredefinedAmount("pre_4", 500m, "TRY")
         };
 
         var suggested = new List<SuggestedAmount>
         {
-            new SuggestedAmount("sgg_1", 75m, "USD"),
-            new SuggestedAmount("sgg_2", 150m, "USD")
+            new SuggestedAmount("sgg_1", 75m, "TRY"),
+            new SuggestedAmount("sgg_2", 150m, "TRY")
         };
 
-        // Sadece flag kontrolü
-        PredefinedAmountManager.GetAmounts(predefined);
+        PredefinedAmountManager.GetAmounts(predefined2, suggested);
 
-        // Replace + Fill
-        PredefinedAmountManager.GetAmounts(predefined, suggested);
-        
-        // Max amount hesaplama
-        decimal maxAmount = DispensibilityManager.ComputeGlobalMaxAmount("USD", 40);
-        Console.WriteLine($"Maksimum çekilebilir: {maxAmount} USD");
+        Console.WriteLine("\n=== Replace + Fill Sonrası ===");
+        foreach (var p in predefined2)
+        {
+            Console.WriteLine(
+                $"{p.Index}: {p.Amount} TRY - Source: {p.AmountSource} - " +
+                $"Replaced: {p.ReplacedIndex} - Dispensible: {p.IsDispensible}");
+        }
+
+        // ====== Örnek 3: Max amount hesaplama ======
+        decimal maxCdm = DispensibilityManager.ComputeDeviceMaxAmount(
+            AtmDeviceType.CDM, "TRY", maxDispensibleItems: 40);
+        decimal maxRec = DispensibilityManager.ComputeDeviceMaxAmount(
+            AtmDeviceType.REC, "TRY", maxDispensibleItems: 40);
+        decimal maxGlobal = DispensibilityManager.ComputeGlobalMaxAmount("TRY");
+
+        Console.WriteLine("\n=== Maksimum Dispensible Amounts ===");
+        Console.WriteLine($"CDM Max: {maxCdm} TRY");
+        Console.WriteLine($"REC Max: {maxRec} TRY");
+        Console.WriteLine($"Global Max: {maxGlobal} TRY");
+
+        // ====== Örnek 4: Algoritma karşılaştırması ======
+        Console.WriteLine("\n=== Algoritma Karşılaştırması ===");
+
+        DispensibilityManager.SetAlgorithm(DispenseAlgorithm.Greedy);
+        bool greedyResult = DispensibilityManager.IsAmountDispensible(350m, "TRY");
+        Console.WriteLine($"350 TRY - Greedy: {greedyResult}");
+
+        DispensibilityManager.SetAlgorithm(DispenseAlgorithm.SubsetSum);
+        bool subsetResult = DispensibilityManager.IsAmountDispensible(350m, "TRY");
+        Console.WriteLine($"350 TRY - SubsetSum: {subsetResult}");
     }
 }
+
+#endregion
 ```
 ------------------LAST GPT SK2-----------------------------
 ```c#
