@@ -3951,422 +3951,110 @@ public static class PredefinedAmountManager
 ```
 ------------------GECE GPT SK2-----------------------------
 ```c#
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
-#region Dispensibility Manager
-
-public enum DispenseAlgorithm { Greedy, SubsetSum }
-
-public static class DispensibilityManager
+private sealed class DisabledSlotFiller
 {
-    // ---- Config ----
-    private static DispenseAlgorithm _currentAlgorithm = DispenseAlgorithm.SubsetSum;
-    private static int _maxDispensibleItems = 40;
-    private static decimal _minDispensibleAmount = 0m;
+    private const int HardKMax = 100; // güvenli üst sınır
+    private readonly IList<PredefinedAmount> _slots;
+    private readonly IReadOnlyDictionary<string, decimal> _baseline;
+    private readonly string _calcPrefix;
+    private readonly FillBaseMode _baseMode;
 
-    public static void SetAlgorithm(DispenseAlgorithm algorithm) => _currentAlgorithm = algorithm;
-    public static void SetMaxDispensibleItems(int maxItems) => _maxDispensibleItems = maxItems > 0 ? maxItems : 40;
-    public static void SetMinDispensibleAmount(decimal minAmount) => _minDispensibleAmount = Math.Max(0m, minAmount);
-    public static int GetMaxDispensibleItems() => _maxDispensibleItems;
-    public static decimal GetMinDispensibleAmount() => _minDispensibleAmount;
-
-    // ---- Public API ----
-    public static bool IsAmountDispensible(decimal amount, string currencyCode)
-        => IsAmountDispensible(amount, currencyCode, _maxDispensibleItems, _minDispensibleAmount);
-
-    public static bool IsAmountDispensibleOnDevice(AtmDeviceType deviceType, decimal amount, string currencyCode)
-        => IsAmountDispensibleOnDevice(deviceType, amount, currencyCode, _maxDispensibleItems, _minDispensibleAmount);
-
-    public static bool IsAmountDispensible(decimal amount, string currencyCode, int maxItems, decimal minAmount)
-    {
-        if (!ValidateInputs(amount, currencyCode, maxItems, minAmount)) return false;
-
-        return IsAmountDispensibleOnDevice(AtmDeviceType.CDM, amount, currencyCode, maxItems, minAmount)
-            || IsAmountDispensibleOnDevice(AtmDeviceType.REC, amount, currencyCode, maxItems, minAmount);
-    }
-
-    public static bool IsAmountDispensibleOnDevice(
-        AtmDeviceType deviceType, decimal amount, string currencyCode, int maxItems, decimal minAmount)
-    {
-        if (!ValidateInputs(amount, currencyCode, maxItems, minAmount)) return false;
-
-        var usable = GetUsableCassettes(deviceType, currencyCode);
-        if (!usable.Any()) return false;
-
-        var groups = AggregateByDenomination(usable);
-        if (groups.Count == 0) return false;
-        if (!HasSufficientCapacity(groups, amount)) return false;
-
-        return _currentAlgorithm == DispenseAlgorithm.Greedy
-            ? CanMakeExactAmount_Greedy(groups, amount, maxItems)
-            : CanMakeExactAmount_SubsetSum(groups, amount, maxItems);
-    }
-
-    // ---- Max Amount Calculation ----
-    public static decimal ComputeDeviceMaxAmount(
-        AtmDeviceType deviceType, string currencyCode, int? maxItemsOverride = null, decimal? hardCapAmount = null)
-    {
-        var maxItems = maxItemsOverride ?? _maxDispensibleItems;
-        if (string.IsNullOrWhiteSpace(currencyCode) || maxItems <= 0) return 0m;
-
-        var groups = AggregateByDenomination(GetUsableCassettes(deviceType, currencyCode));
-        if (groups.Count == 0) return 0m;
-
-        int remaining = maxItems;
-        decimal sum = 0m;
-        foreach (var g in groups)
-        {
-            if (remaining == 0) break;
-            int take = Math.Min(remaining, g.Count);
-            sum += g.Denom * take;
-            remaining -= take;
-        }
-
-        if (hardCapAmount.HasValue && sum > hardCapAmount.Value)
-            sum = hardCapAmount.Value;
-
-        return sum;
-    }
-
-    public static decimal ComputeGlobalMaxAmount(string currencyCode, int? maxItemsOverride = null, decimal? hardCapAmount = null)
-    {
-        var cdm = ComputeDeviceMaxAmount(AtmDeviceType.CDM, currencyCode, maxItemsOverride, hardCapAmount);
-        var rec = ComputeDeviceMaxAmount(AtmDeviceType.REC, currencyCode, maxItemsOverride, hardCapAmount);
-        return Math.Max(cdm, rec);
-    }
-
-    // ---- Internals ----
-    private static bool ValidateInputs(decimal amount, string currencyCode, int maxItems, decimal minAmount)
-    {
-        if (string.IsNullOrWhiteSpace(currencyCode)) return false;
-        if (maxItems <= 0) return false;
-        if (minAmount < 0m) return false; // Güvenlik
-        if (amount < minAmount) return false;
-        return amount > 0m;
-    }
-
-    private sealed class DenomGroup
-    {
-        public int Count { get; }
-        public decimal Denom { get; }
-        public DenomGroup(int count, decimal denom) { Count = count; Denom = denom; }
-    }
-
-    private static IEnumerable<CdmCassette> GetUsableCassettes(AtmDeviceType deviceType, string currencyCode)
-    {
-        var all = Diagnostic.Diagnostics?.Values?
-            .OfType<CdmDevice>()
-            .SelectMany(d => d.Cassettes?.Values ?? Enumerable.Empty<CdmCassette>())
-            ?? Enumerable.Empty<CdmCassette>();
-
-        string typeName = deviceType.ToString();
-
-        return all.Where(c =>
-            c != null &&
-            string.Equals(c.CassetteType, typeName, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(c.CurrencyCode, currencyCode, StringComparison.OrdinalIgnoreCase) &&
-            c.Status < 4 && c.CurrentCount > 0 && c.BanknoteType > 0m);
-    }
-
-    private static List<DenomGroup> AggregateByDenomination(IEnumerable<CdmCassette> cassettes) =>
-        cassettes.GroupBy(c => c.BanknoteType)
-                 .Select(g => new DenomGroup(g.Sum(x => x.CurrentCount), g.Key))
-                 .OrderByDescending(g => g.Denom)
-                 .ToList();
-
-    private static bool HasSufficientCapacity(List<DenomGroup> groups, decimal amount)
-        => groups.Sum(g => g.Denom * g.Count) >= amount;
-
-    private static bool CanMakeExactAmount_Greedy(List<DenomGroup> groups, decimal amount, int maxItems)
-    {
-        decimal remaining = amount;
-        int used = 0;
-
-        foreach (var g in groups)
-        {
-            if (remaining <= 0 || used >= maxItems) break;
-
-            int maxByAmount = (int)(remaining / g.Denom);
-            int maxByCount = g.Count;
-            int maxByLimit = maxItems - used;
-
-            int take = Math.Min(Math.Min(maxByAmount, maxByCount), maxByLimit);
-            if (take <= 0) continue;
-
-            remaining -= take * g.Denom;
-            used += take;
-
-            if (remaining == 0) return true;
-        }
-        return remaining == 0;
-    }
-
-    private static bool CanMakeExactAmount_SubsetSum(List<DenomGroup> groups, decimal amount, int maxItems)
-    {
-        if (amount <= 0m || maxItems <= 0) return false;
-
-        var valid = groups.Where(g => g.Denom > 0m && g.Count > 0)
-                          .OrderByDescending(g => g.Denom)
-                          .ToList();
-        if (valid.Count == 0) return false;
-        if (!HasSufficientCapacity(valid, amount)) return false;
-
-        var reachable = new Dictionary<decimal, int> { [0m] = 0 };
-
-        foreach (var g in valid)
-        {
-            int remaining = g.Count;
-            int pack = 1;
-
-            while (remaining > 0)
-            {
-                int take = Math.Min(pack, remaining);
-                decimal chunk = g.Denom * take;
-                int chunkNotes = take;
-
-                foreach (var kv in reachable.ToArray())
-                {
-                    var newSum = kv.Key + chunk;
-                    if (newSum > amount) continue;
-
-                    var newNotes = kv.Value + chunkNotes;
-                    if (newNotes > maxItems) continue;
-
-                    if (newSum == amount) return true;
-
-                    if (!reachable.TryGetValue(newSum, out int best) || newNotes < best)
-                        reachable[newSum] = newNotes;
-                }
-
-                remaining -= take;
-                pack <<= 1;
-            }
-        }
-        return false;
-    }
-}
-
-#endregion
-
-#region Predefined Amount Manager
-
-public static class PredefinedAmountManager
-{
-    private const string DefaultCalcPrefix = "calc_";
-
-    // -------- Helpers --------
-    public static void SetDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
-    {
-        if (items == null) return;
-        foreach (var x in items.Where(i => i != null))
-            x.IsDispensible = DispensibilityManager.IsAmountDispensible(x.Amount, x.CurrencyCode);
-    }
-
-    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmount> pre) =>
-        pre?.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal)
-        ?? new Dictionary<string, decimal>();
-
-    private static void ValidateBaselineCoverage(
+    public DisabledSlotFiller(
         IList<PredefinedAmount> slots,
-        IReadOnlyDictionary<string, decimal> baselineByIndex)
+        IReadOnlyDictionary<string, decimal> baseline,
+        FillBaseMode baseMode,
+        string calcPrefix = DefaultCalcPrefix)
     {
-        if (slots == null) throw new ArgumentNullException(nameof(slots));
-        if (baselineByIndex == null) throw new ArgumentNullException(nameof(baselineByIndex));
-
-        var missing = slots.Select(s => s.Index).Where(i => !baselineByIndex.ContainsKey(i)).ToList();
-        if (missing.Count > 0)
-            throw new ArgumentException($"Baseline sözlüğü şu indexleri içermiyor: {string.Join(", ", missing)}");
+        _slots      = slots   ?? throw new ArgumentNullException(nameof(slots));
+        _baseline   = baseline?? throw new ArgumentNullException(nameof(baseline));
+        _baseMode   = baseMode;
+        _calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
     }
 
-    // -------- Public API --------
-    public static IList<PredefinedAmount> GetAmounts(IList<PredefinedAmount> predefined)
+    public void FillSlots()
     {
-        SetDispensibility(predefined);
-        return predefined ?? new List<PredefinedAmount>();
-    }
+        if (_slots.Count == 0) return;
+        ValidateBaselineCoverage(_slots, _baseline);
 
-    public static IList<PredefinedAmount> GetAmounts(
-        IList<PredefinedAmount> predefined,
-        IList<SuggestedAmount> suggested)
-    {
-        if (predefined == null || predefined.Count == 0)
-            return predefined ?? new List<PredefinedAmount>();
+        // currency güvenlik kontrolü
+        if (string.IsNullOrWhiteSpace(_slots[0]?.CurrencyCode)) return;
+        string currency = _slots[0].CurrencyCode;
 
-        var baseline = SnapshotBaselineByIndex(predefined);
+        // --- BASE UNIT SEÇİMİ ---
+        decimal baseUnit = SelectBaseUnit(_slots, _baseMode);
 
-        SetDispensibility(predefined);
-        SetDispensibility(suggested);
+        // PredefinedMin seçildi ama uygun base bulunamadıysa güvenli fallback
+        if (baseUnit <= 0m && _baseMode == FillBaseMode.PredefinedMin)
+            baseUnit = SelectBaseUnit(_slots, FillBaseMode.CurrentMin);
 
-        new SlotReplacer(predefined, suggested, baseline).ReplaceSlots();
-        new DisabledSlotFiller(predefined, baseline, DefaultCalcPrefix).FillSlots();
+        if (baseUnit <= 0m) return;
 
-        return predefined;
-    }
+        // Global üst sınır (kaset + maxItems ile sınırlı)
+        decimal cap = DispensibilityManager.ComputeGlobalMaxAmount(currency);
+        if (cap <= 0m || cap < baseUnit) return;
 
-    // -------- SlotReplacer --------
-    private sealed class SlotReplacer
-    {
-        private readonly IList<PredefinedAmount> _slots;
-        private readonly IReadOnlyDictionary<string, decimal> _baseline;
-        private readonly List<SuggestedAmount> _remaining;
-        private readonly HashSet<decimal> _currentAmounts;
+        // min eşiğe göre başlangıç k
+        decimal minAmount = DispensibilityManager.GetMinDispensibleAmount();
+        int kStart = minAmount > 0m
+            ? Math.Max(1, (int)Math.Ceiling(minAmount / baseUnit))
+            : 1;
 
-        public SlotReplacer(
-            IList<PredefinedAmount> slots,
-            IEnumerable<SuggestedAmount> suggested,
-            IReadOnlyDictionary<string, decimal> baseline)
+        int kMax = (int)Math.Floor(cap / baseUnit);
+        if (kStart > kMax) return;
+        kMax = Math.Min(kMax, HardKMax); // sonsuz aramayı engelle
+
+        var used   = new HashSet<decimal>(_slots.Select(s => s.Amount));
+        var toFill = _slots
+            .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+            .OrderBy(s => _baseline[s.Index])
+            .ToList();
+        if (toFill.Count == 0) return;
+
+        int need = toFill.Count;
+        var candidates = new List<decimal>(need);
+
+        for (int k = kStart; k <= kMax && candidates.Count < need; k++)
         {
-            _slots = slots ?? throw new ArgumentNullException(nameof(slots));
-            _baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
-            _remaining = suggested?.Where(a => a != null && a.IsDispensible).ToList()
-                        ?? new List<SuggestedAmount>();
-            _currentAmounts = new HashSet<decimal>(_slots.Select(s => s.Amount));
+            var cand = baseUnit * k;
+            if (used.Contains(cand)) continue;
+
+            // gerçekten ödenebilir mi? (min, maxItems, kaset kısıtları dahil)
+            if (DispensibilityManager.IsAmountDispensible(cand, currency))
+                candidates.Add(cand);
         }
 
-        public void ReplaceSlots()
+        int calcNo = 1;
+        foreach (var slot in toFill)
         {
-            if (_slots.Count == 0 || _remaining.Count == 0) return;
-            ValidateBaselineCoverage(_slots, _baseline);
+            if (candidates.Count == 0) break;
 
-            ReplaceInPhase(isDispensible: true);
-            ReplaceInPhase(isDispensible: false);
-        }
+            var cand = candidates[0];
+            candidates.RemoveAt(0);
 
-        private void ReplaceInPhase(bool isDispensible)
-        {
-            for (int i = _remaining.Count - 1; i >= 0; i--)
-            {
-                var api = _remaining[i];
-                if (_currentAmounts.Contains(api.Amount)) continue;
-
-                var candidateIdx = Enumerable.Range(0, _slots.Count)
-                    .Where(ix => _slots[ix].IsDispensible == isDispensible &&
-                                 string.IsNullOrEmpty(_slots[ix].ReplacedIndex))
-                    .ToList();
-                if (candidateIdx.Count == 0) continue;
-
-                var best = FindNearestSlotIndex(candidateIdx, api.Amount);
-                if (!best.HasValue) continue; // ✅ Nullable check
-
-                ReplaceSlot(best.Value, api);
-                _remaining.RemoveAt(i);
-            }
-        }
-
-        private int? FindNearestSlotIndex(List<int> candidates, decimal targetAmount)
-        {
-            if (candidates.Count == 0) return null; // ✅ Güvenlik
-
-            return candidates
-                .OrderBy(i => Math.Abs(_baseline[_slots[i].Index] - targetAmount))
-                .ThenBy(i => _baseline[_slots[i].Index])
-                .ThenBy(i => i)
-                .First();
-        }
-
-        private void ReplaceSlot(int slotIndex, SuggestedAmount api)
-        {
-            var slot = _slots[slotIndex];
-            slot.Amount = api.Amount;
-            slot.AmountSource = AmountSource.Suggested;
-            slot.ReplacedIndex = api.Index;
+            slot.Amount        = cand;
+            slot.AmountSource  = AmountSource.Calculated;
+            slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
             slot.IsDispensible = true;
 
-            _currentAmounts.Add(slot.Amount);
+            used.Add(cand);
         }
     }
 
-    // -------- DisabledSlotFiller --------
-    private sealed class DisabledSlotFiller
+    private static decimal SelectBaseUnit(IList<PredefinedAmount> slots, FillBaseMode mode)
     {
-        private readonly IList<PredefinedAmount> _slots;
-        private readonly IReadOnlyDictionary<string, decimal> _baseline;
-        private readonly string _calcPrefix;
-
-        public DisabledSlotFiller(
-            IList<PredefinedAmount> slots,
-            IReadOnlyDictionary<string, decimal> baseline,
-            string calcPrefix = DefaultCalcPrefix)
+        IEnumerable<PredefinedAmount> source = mode switch
         {
-            _slots = slots ?? throw new ArgumentNullException(nameof(slots));
-            _baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
-            _calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
-        }
+            FillBaseMode.PredefinedMin => slots.Where(s => s.AmountSource == AmountSource.Predefined && s.IsDispensible),
+            _                           => slots.Where(s => s.IsDispensible) // CurrentMin
+        };
 
-        public void FillSlots()
-        {
-            if (_slots.Count == 0) return;
-            ValidateBaselineCoverage(_slots, _baseline);
-
-            // ✅ Currency null check
-            if (string.IsNullOrWhiteSpace(_slots[0]?.CurrencyCode)) return;
-            string currency = _slots[0].CurrencyCode;
-
-            // BASE = listedeki en küçük ÖDENEBİLİR
-            decimal baseUnit = _slots.Where(s => s.IsDispensible)
-                                     .Select(s => s.Amount)
-                                     .DefaultIfEmpty(0m)
-                                     .Min();
-            if (baseUnit <= 0m) return;
-
-            // Global cap
-            decimal cap = DispensibilityManager.ComputeGlobalMaxAmount(currency);
-            if (cap <= 0m || cap < baseUnit) return;
-
-            // ✅ Minimum eşiğe göre başlangıç
-            decimal minAmount = DispensibilityManager.GetMinDispensibleAmount();
-            int kStart = minAmount > 0m
-                ? Math.Max(1, (int)Math.Ceiling(minAmount / baseUnit))
-                : 1;
-
-            int kMax = (int)Math.Floor(cap / baseUnit);
-            
-            // ✅ kStart > kMax kontrolü
-            if (kStart > kMax) return;
-            
-            // ✅ Güvenli limit
-            kMax = Math.Min(kMax, 1000);
-
-            var used = new HashSet<decimal>(_slots.Select(s => s.Amount));
-            var toFill = _slots
-                .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
-                .OrderBy(s => _baseline[s.Index])
-                .ToList();
-            if (toFill.Count == 0) return;
-
-            int need = toFill.Count;
-            var candidates = new List<decimal>(need);
-
-            for (int k = kStart; k <= kMax && candidates.Count < need; k++)
-            {
-                var cand = baseUnit * k;
-                if (used.Contains(cand)) continue;
-
-                if (DispensibilityManager.IsAmountDispensible(cand, currency))
-                    candidates.Add(cand);
-            }
-
-            int calcNo = 1;
-            foreach (var slot in toFill)
-            {
-                if (candidates.Count == 0) break;
-
-                var cand = candidates[0];
-                candidates.RemoveAt(0);
-
-                slot.Amount = cand;
-                slot.AmountSource = AmountSource.Calculated;
-                slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
-                slot.IsDispensible = true;
-
-                used.Add(cand);
-            }
-        }
+        return source.Select(s => s.Amount).DefaultIfEmpty(0m).Min();
     }
 }
-
-#endregion
+public enum FillBaseMode
+{
+    CurrentMin,    // (default) listede (replace sonrası) en küçük dispensible
+    PredefinedMin  // sadece AmountSource.Predefined + IsDispensible == true arasından min
+}
 
 ```
