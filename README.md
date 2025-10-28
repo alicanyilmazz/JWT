@@ -4000,18 +4000,15 @@ private sealed class DisabledSlotFiller
 {
     private readonly IList<PredefinedAmount> _slots;
     private readonly IReadOnlyDictionary<string, decimal> _baseline;
-    private readonly FillStrategy _fillStrategy;
     private readonly string _calcPrefix;
 
     public DisabledSlotFiller(
         IList<PredefinedAmount> slots,
         IReadOnlyDictionary<string, decimal> baseline,
-        FillStrategy fillStrategy,
         string calcPrefix = "calc_")
     {
         _slots = slots ?? throw new ArgumentNullException(nameof(slots));
         _baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
-        _fillStrategy = fillStrategy;
         _calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? "calc_" : calcPrefix;
     }
 
@@ -4024,9 +4021,14 @@ private sealed class DisabledSlotFiller
         if (string.IsNullOrWhiteSpace(_slots[0]?.CurrencyCode)) return;
         string currency = _slots[0].CurrencyCode;
 
-        // BASE UNIT: Stratejiye göre belirlenir
-        decimal baseUnit = DetermineBaseUnit(currency);
-        if (baseUnit <= 0m) return;
+        // BASE UNIT: Başlangıç predefined tutarlardan ödenebilir en küçüğü
+        var baselineDispensibleAmounts = _baseline.Values
+            .Where(amount => DispensibilityManager.IsAmountDispensible(amount, currency))
+            .ToList();
+
+        if (baselineDispensibleAmounts.Count == 0) return;
+
+        decimal baseUnit = baselineDispensibleAmounts.Min();
 
         // Global maksimum çekilebilir tutar
         decimal cap = DispensibilityManager.ComputeGlobalMaxAmount(currency);
@@ -4040,7 +4042,7 @@ private sealed class DisabledSlotFiller
 
         // Maksimum katsayı hesapla
         int kMax = (int)Math.Floor(cap / baseUnit);
-        if (kStart > kMax) return; // Geçersiz aralık
+        if (kStart > kMax) return;
 
         // Dinamik limit: maxItems'in 10 katı
         int maxItems = DispensibilityManager.GetMaxDispensibleItems();
@@ -4057,7 +4059,7 @@ private sealed class DisabledSlotFiller
 
         if (toFill.Count == 0) return;
 
-        // Aday tutarları oluştur
+        // Aday tutarları oluştur (baseUnit'in katları)
         int need = toFill.Count;
         var candidates = new List<decimal>(need);
 
@@ -4074,7 +4076,7 @@ private sealed class DisabledSlotFiller
         int calcNo = 1;
         foreach (var slot in toFill)
         {
-            if (candidates.Count == 0) break; // Aday bitti
+            if (candidates.Count == 0) break;
 
             var cand = candidates[0];
             candidates.RemoveAt(0);
@@ -4085,41 +4087,6 @@ private sealed class DisabledSlotFiller
             slot.IsDispensible = true;
 
             used.Add(cand);
-        }
-    }
-
-    private decimal DetermineBaseUnit(string currency)
-    {
-        switch (_fillStrategy)
-        {
-            case FillStrategy.CurrentMinDispensible:
-                // Replace sonrası mevcut listedeki en küçük ödenebilir
-                return _slots
-                    .Where(s => s.IsDispensible)
-                    .Select(s => s.Amount)
-                    .DefaultIfEmpty(0m)
-                    .Min();
-
-            case FillStrategy.BaselineMinDispensible:
-                // Baseline tutarlarından ödenebilir olanların en küçüğü
-                var baselineDispensibleAmounts = _baseline.Values
-                    .Where(amount => DispensibilityManager.IsAmountDispensible(amount, currency))
-                    .ToList();
-
-                if (baselineDispensibleAmounts.Count == 0)
-                {
-                    // Fallback: Baseline'da ödenebilir yoksa, current'tan al
-                    return _slots
-                        .Where(s => s.IsDispensible)
-                        .Select(s => s.Amount)
-                        .DefaultIfEmpty(0m)
-                        .Min();
-                }
-
-                return baselineDispensibleAmounts.Min();
-
-            default:
-                return 0m;
         }
     }
 }
