@@ -3951,106 +3951,264 @@ public static class PredefinedAmountManager
 ```
 ------------------GECE GPT gggg-----------------------------
 ```c#
-private sealed class DisabledSlotFiller
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+#region Models
+
+public enum AmountSource { Predefined, Suggested, Calculated }
+
+public abstract class BaseAmount
 {
-    private const int HardKMax = 100; // güvenli üst sınır
-    private readonly IList<PredefinedAmount> _slots;
-    private readonly IReadOnlyDictionary<string, decimal> _baseline;
-    private readonly string _calcPrefix;
-    private readonly FillBaseMode _baseMode;
+    public string Index { get; set; }
+    public string CurrencyCode { get; set; }
+    public decimal Amount { get; set; }
+    public bool IsDispensible { get; set; }
 
-    public DisabledSlotFiller(
-        IList<PredefinedAmount> slots,
-        IReadOnlyDictionary<string, decimal> baseline,
-        FillBaseMode baseMode,
-        string calcPrefix = DefaultCalcPrefix)
+    protected BaseAmount(string index, decimal amount, string currency)
     {
-        _slots      = slots   ?? throw new ArgumentNullException(nameof(slots));
-        _baseline   = baseline?? throw new ArgumentNullException(nameof(baseline));
-        _baseMode   = baseMode;
-        _calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
-    }
-
-    public void FillSlots()
-    {
-        if (_slots.Count == 0) return;
-        ValidateBaselineCoverage(_slots, _baseline);
-
-        // currency güvenlik kontrolü
-        if (string.IsNullOrWhiteSpace(_slots[0]?.CurrencyCode)) return;
-        string currency = _slots[0].CurrencyCode;
-
-        // --- BASE UNIT SEÇİMİ ---
-        decimal baseUnit = SelectBaseUnit(_slots, _baseMode);
-
-        // PredefinedMin seçildi ama uygun base bulunamadıysa güvenli fallback
-        if (baseUnit <= 0m && _baseMode == FillBaseMode.PredefinedMin)
-            baseUnit = SelectBaseUnit(_slots, FillBaseMode.CurrentMin);
-
-        if (baseUnit <= 0m) return;
-
-        // Global üst sınır (kaset + maxItems ile sınırlı)
-        decimal cap = DispensibilityManager.ComputeGlobalMaxAmount(currency);
-        if (cap <= 0m || cap < baseUnit) return;
-
-        // min eşiğe göre başlangıç k
-        decimal minAmount = DispensibilityManager.GetMinDispensibleAmount();
-        int kStart = minAmount > 0m
-            ? Math.Max(1, (int)Math.Ceiling(minAmount / baseUnit))
-            : 1;
-
-        int kMax = (int)Math.Floor(cap / baseUnit);
-        if (kStart > kMax) return;
-        kMax = Math.Min(kMax, HardKMax); // sonsuz aramayı engelle
-
-        var used   = new HashSet<decimal>(_slots.Select(s => s.Amount));
-        var toFill = _slots
-            .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
-            .OrderBy(s => _baseline[s.Index])
-            .ToList();
-        if (toFill.Count == 0) return;
-
-        int need = toFill.Count;
-        var candidates = new List<decimal>(need);
-
-        for (int k = kStart; k <= kMax && candidates.Count < need; k++)
-        {
-            var cand = baseUnit * k;
-            if (used.Contains(cand)) continue;
-
-            // gerçekten ödenebilir mi? (min, maxItems, kaset kısıtları dahil)
-            if (DispensibilityManager.IsAmountDispensible(cand, currency))
-                candidates.Add(cand);
-        }
-
-        int calcNo = 1;
-        foreach (var slot in toFill)
-        {
-            if (candidates.Count == 0) break;
-
-            var cand = candidates[0];
-            candidates.RemoveAt(0);
-
-            slot.Amount        = cand;
-            slot.AmountSource  = AmountSource.Calculated;
-            slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
-            slot.IsDispensible = true;
-
-            used.Add(cand);
-        }
-    }
-
-    private static decimal SelectBaseUnit(IList<PredefinedAmount> slots, FillBaseMode mode)
-    {
-        IEnumerable<PredefinedAmount> source = mode switch
-        {
-            FillBaseMode.PredefinedMin => slots.Where(s => s.AmountSource == AmountSource.Predefined && s.IsDispensible),
-            _                           => slots.Where(s => s.IsDispensible) // CurrentMin
-        };
-
-        return source.Select(s => s.Amount).DefaultIfEmpty(0m).Min();
+        Index = index;
+        Amount = amount;
+        CurrencyCode = currency;
     }
 }
+
+public sealed class SuggestedAmount : BaseAmount
+{
+    public SuggestedAmount(string index, decimal amount, string currency)
+        : base(index, amount, currency) { }
+}
+
+public sealed class PredefinedAmount : BaseAmount
+{
+    public AmountSource AmountSource { get; set; } = AmountSource.Predefined;
+    public string ReplacedIndex { get; set; } = string.Empty;
+
+    public PredefinedAmount(string index, decimal amount, string currency)
+        : base(index, amount, currency) { }
+}
+
+#endregion
+
+#region Predefined Amount Manager
+
+public static class PredefinedAmountManager
+{
+    private const string DefaultCalcPrefix = "calc_";
+
+    public static void SetDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
+    {
+        if (items == null) return;
+        foreach (var x in items.Where(i => i != null))
+            x.IsDispensible = DispensibilityManager.IsAmountDispensible(x.Amount, x.CurrencyCode);
+    }
+
+    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmount> pre) =>
+        pre?.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal)
+        ?? new Dictionary<string, decimal>();
+
+    private static void ValidateBaselineCoverage(
+        IList<PredefinedAmount> slots,
+        IReadOnlyDictionary<string, decimal> baselineByIndex)
+    {
+        if (slots == null) throw new ArgumentNullException(nameof(slots));
+        if (baselineByIndex == null) throw new ArgumentNullException(nameof(baselineByIndex));
+
+        var missing = slots.Select(s => s.Index).Where(i => !baselineByIndex.ContainsKey(i)).ToList();
+        if (missing.Count > 0)
+            throw new ArgumentException($"Baseline sözlüğü şu indexleri içermiyor: {string.Join(", ", missing)}");
+    }
+
+    public static IList<PredefinedAmount> GetAmounts(IList<PredefinedAmount> predefined)
+    {
+        SetDispensibility(predefined);
+        return predefined ?? new List<PredefinedAmount>();
+    }
+
+    public static IList<PredefinedAmount> GetAmounts(
+        IList<PredefinedAmount> predefined,
+        IList<SuggestedAmount> suggested,
+        FillingOption option = FillingOption.CurrentMin)
+    {
+        if (predefined == null || predefined.Count == 0)
+            return predefined ?? new List<PredefinedAmount>();
+
+        var baseline = SnapshotBaselineByIndex(predefined);
+
+        SetDispensibility(predefined);
+        SetDispensibility(suggested);
+
+        new SlotReplacer(predefined, suggested, baseline).ReplaceSlots();
+        new DisabledSlotFiller(predefined, baseline, option, DefaultCalcPrefix).FillSlots();
+
+        return predefined;
+    }
+
+    private sealed class SlotReplacer
+    {
+        private readonly IList<PredefinedAmount> slots;
+        private readonly IReadOnlyDictionary<string, decimal> baseline;
+        private readonly List<SuggestedAmount> remaining;
+        private readonly HashSet<decimal> currentAmounts;
+
+        public SlotReplacer(
+            IList<PredefinedAmount> slots,
+            IEnumerable<SuggestedAmount> suggested,
+            IReadOnlyDictionary<string, decimal> baseline)
+        {
+            this.slots = slots ?? throw new ArgumentNullException(nameof(slots));
+            this.baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
+            remaining = suggested?.Where(a => a != null && a.IsDispensible).ToList()
+                        ?? new List<SuggestedAmount>();
+            currentAmounts = new HashSet<decimal>(this.slots.Select(s => s.Amount));
+        }
+
+        public void ReplaceSlots()
+        {
+            if (slots.Count == 0 || remaining.Count == 0) return;
+            ValidateBaselineCoverage(slots, baseline);
+
+            ReplaceInPhase(true);
+            ReplaceInPhase(false);
+        }
+
+        private void ReplaceInPhase(bool isDispensible)
+        {
+            for (int i = remaining.Count - 1; i >= 0; i--)
+            {
+                var api = remaining[i];
+                if (currentAmounts.Contains(api.Amount)) continue;
+
+                var candidateIdx = Enumerable.Range(0, slots.Count)
+                    .Where(ix => slots[ix].IsDispensible == isDispensible &&
+                                 string.IsNullOrEmpty(slots[ix].ReplacedIndex))
+                    .ToList();
+                if (candidateIdx.Count == 0) continue;
+
+                var best = FindNearestSlotIndex(candidateIdx, api.Amount);
+                if (!best.HasValue) continue;
+
+                ReplaceSlot(best.Value, api);
+                remaining.RemoveAt(i);
+            }
+        }
+
+        private int? FindNearestSlotIndex(List<int> candidates, decimal targetAmount)
+        {
+            if (candidates.Count == 0) return null;
+
+            return candidates
+                .OrderBy(i => Math.Abs(baseline[slots[i].Index] - targetAmount))
+                .ThenBy(i => baseline[slots[i].Index])
+                .ThenBy(i => i)
+                .First();
+        }
+
+        private void ReplaceSlot(int slotIndex, SuggestedAmount api)
+        {
+            var slot = slots[slotIndex];
+            slot.Amount = api.Amount;
+            slot.AmountSource = AmountSource.Suggested;
+            slot.ReplacedIndex = api.Index;
+            slot.IsDispensible = true;
+
+            currentAmounts.Add(slot.Amount);
+        }
+    }
+
+    private sealed class DisabledSlotFiller
+    {
+        private const int HardKMax = 100;
+
+        private readonly IList<PredefinedAmount> slots;
+        private readonly IReadOnlyDictionary<string, decimal> baseline;
+        private readonly string calcPrefix;
+        private readonly FillingOption option;
+
+        public DisabledSlotFiller(
+            IList<PredefinedAmount> slots,
+            IReadOnlyDictionary<string, decimal> baseline,
+            FillingOption option,
+            string calcPrefix = DefaultCalcPrefix)
+        {
+            this.slots = slots ?? throw new ArgumentNullException(nameof(slots));
+            this.baseline = baseline ?? throw new ArgumentNullException(nameof(baseline));
+            this.option = option;
+            this.calcPrefix = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
+        }
+
+        public void FillSlots()
+        {
+            if (slots.Count == 0) return;
+            ValidateBaselineCoverage(slots, baseline);
+            if (string.IsNullOrWhiteSpace(slots[0]?.CurrencyCode)) return;
+
+            string currency = slots[0].CurrencyCode;
+
+            decimal baseUnit = SelectBaseUnit(slots, option);
+            if (baseUnit <= 0m && option == FillingOption.PredefinedMin)
+                baseUnit = SelectBaseUnit(slots, FillingOption.CurrentMin);
+            if (baseUnit <= 0m) return;
+
+            decimal cap = DispensibilityManager.ComputeGlobalMaxAmount(currency);
+            if (cap <= 0m || cap < baseUnit) return;
+
+            decimal minAmount = DispensibilityManager.GetMinDispensibleAmount();
+            int kStart = minAmount > 0m ? Math.Max(1, (int)Math.Ceiling(minAmount / baseUnit)) : 1;
+
+            int kMax = (int)Math.Floor(cap / baseUnit);
+            if (kStart > kMax) return;
+            kMax = Math.Min(kMax, HardKMax);
+
+            var used = new HashSet<decimal>(slots.Select(s => s.Amount));
+            var toFill = slots
+                .Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
+                .OrderBy(s => baseline[s.Index])
+                .ToList();
+            if (toFill.Count == 0) return;
+
+            int need = toFill.Count;
+            var candidates = new List<decimal>(need);
+
+            for (int k = kStart; k <= kMax && candidates.Count < need; k++)
+            {
+                var cand = baseUnit * k;
+                if (used.Contains(cand)) continue;
+                if (DispensibilityManager.IsAmountDispensible(cand, currency))
+                    candidates.Add(cand);
+            }
+
+            int calcNo = 1;
+            foreach (var slot in toFill)
+            {
+                if (candidates.Count == 0) break;
+
+                var cand = candidates[0];
+                candidates.RemoveAt(0);
+
+                slot.Amount = cand;
+                slot.AmountSource = AmountSource.Calculated;
+                slot.ReplacedIndex = $"{calcPrefix}{calcNo++}";
+                slot.IsDispensible = true;
+
+                used.Add(cand);
+            }
+        }
+
+        private static decimal SelectBaseUnit(IList<PredefinedAmount> slots, FillingOption mode)
+        {
+            IEnumerable<PredefinedAmount> source = mode == FillingOption.PredefinedMin
+                ? slots.Where(s => s.AmountSource == AmountSource.Predefined && s.IsDispensible)
+                : slots.Where(s => s.IsDispensible);
+
+            return source.Select(s => s.Amount).DefaultIfEmpty(0m).Min();
+        }
+    }
+}
+
+#endregion
+
 
 
 ```
