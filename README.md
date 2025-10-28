@@ -3949,7 +3949,7 @@ public static class PredefinedAmountManager
 
 
 ```
-------------------GECE GPT SK2-----------------------------
+------------------GECE GPT gggg-----------------------------
 ```c#
 private sealed class DisabledSlotFiller
 {
@@ -4051,10 +4051,6 @@ private sealed class DisabledSlotFiller
         return source.Select(s => s.Amount).DefaultIfEmpty(0m).Min();
     }
 }
-public enum FillBaseMode
-{
-    CurrentMin,    // (default) listede (replace sonrası) en küçük dispensible
-    PredefinedMin  // sadece AmountSource.Predefined + IsDispensible == true arasından min
-}
+
 
 ```
