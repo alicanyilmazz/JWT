@@ -4152,4 +4152,34 @@ FROM x
 ORDER BY (CASE WHEN blocking_session_id = 0 THEN session_id ELSE blocking_session_id END), session_id;
 
 
+-------------
+-- model içindeki kullanıcı nesneleri
+SELECT s.name AS [schema], o.name, o.type_desc
+FROM model.sys.objects o
+JOIN model.sys.schemas s ON s.schema_id = o.schema_id
+WHERE o.is_ms_shipped = 0
+ORDER BY s.name, o.name;
+
+-- Kullanıcı tanımlı tipler
+SELECT name, system_type_id, user_type_id
+FROM model.sys.types
+WHERE is_user_defined = 1;
+
+-- Sistem dışı şemalar
+SELECT name FROM model.sys.schemas
+WHERE principal_id NOT IN (1); -- 1=dbo
+
+-- Kullanıcı/roller (gerekliyse gözden geçir)
+SELECT name, type_desc
+FROM model.sys.database_principals
+WHERE principal_id > 4;   -- sys nesneleri hariç
+
+DBCC CLONEDATABASE (YourDb, YourDb_Clone) WITH NO_STATISTICS, NO_QUERYSTORE;
+-- veya yeni sürümlerde doğrulamalı:
+DBCC CLONEDATABASE (YourDb, YourDb_Clone) WITH VERIFY_CLONEDB;
+
+DBCC CHECKCATALOG (YourDb) WITH NO_INFOMSGS;
+DBCC CHECKDB (YourDb) WITH NO_INFOMSGS, ALL_ERRORMSGS;
+
+
 ```
