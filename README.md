@@ -1,17 +1,3 @@
-SELECT
-  r.session_id,
-  r.status,
-  r.command,
-  r.blocking_session_id,
-  r.wait_type, r.wait_time, r.wait_resource,
-  r.cpu_time, r.reads, r.writes,
-  DB_NAME(r.database_id) AS database_name,
-  t.text AS running_sql
-FROM sys.dm_exec_requests r
-CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
-ORDER BY r.cpu_time DESC;
-
-
 
 # JWT
 ![image](https://github.com/alicanyilmazz/JWT/assets/49749125/f06bf886-ae77-439e-81d9-e26660d60a8e)
@@ -4105,5 +4091,65 @@ private sealed class DisabledSlotFiller
         }
     }
 }
+
+```
+-----------------------------------------------
+```SQL
+
+-- Tüm oturumları listele (özet)
+SELECT
+  s.session_id,
+  s.login_name,
+  s.host_name,
+  s.program_name,
+  s.database_id,
+  DB_NAME(s.database_id) AS database_name,
+  s.status,
+  s.reads, s.writes,
+  s.cpu_time,                    -- ms
+  s.memory_usage,                -- 8 KB sayfa
+  s.last_request_start_time,
+  s.last_request_end_time,
+  c.client_net_address
+FROM sys.dm_exec_sessions s
+LEFT JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
+WHERE s.is_user_process = 1
+ORDER BY s.last_request_start_time DESC;
+
+-- Aktif istekleri ve çalışmakta olan SQL’i gör
+SELECT
+  r.session_id,
+  r.status,
+  r.command,
+  r.blocking_session_id,
+  r.wait_type, r.wait_time, r.wait_resource,
+  r.cpu_time, r.reads, r.writes,
+  DB_NAME(r.database_id) AS database_name,
+  t.text AS running_sql
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+ORDER BY r.cpu_time DESC;
+
+--Belirli bir veritabanına bağlı oturumları gör
+DECLARE @db sysname = N'YourDb';
+SELECT s.session_id, s.login_name, s.host_name, s.program_name, s.status
+FROM sys.dm_exec_sessions s
+WHERE s.database_id = DB_ID(@db) AND s.session_id <> @@SPID;
+
+-- Bloklama (kim kimi kilitliyor?) ağacı
+WITH x AS (
+  SELECT
+    s.session_id,
+    r.blocking_session_id,
+    s.login_name, s.host_name, DB_NAME(r.database_id) AS db,
+    r.wait_type, r.wait_time, r.wait_resource
+  FROM sys.dm_exec_sessions s
+  LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+  WHERE s.is_user_process = 1
+)
+SELECT *
+FROM x
+ORDER BY (CASE WHEN blocking_session_id = 0 THEN session_id ELSE blocking_session_id END), session_id;
+
 
 ```
