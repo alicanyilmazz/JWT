@@ -1,3 +1,18 @@
+SELECT
+  r.session_id,
+  r.status,
+  r.command,
+  r.blocking_session_id,
+  r.wait_type, r.wait_time, r.wait_resource,
+  r.cpu_time, r.reads, r.writes,
+  DB_NAME(r.database_id) AS database_name,
+  t.text AS running_sql
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+ORDER BY r.cpu_time DESC;
+
+
+
 # JWT
 ![image](https://github.com/alicanyilmazz/JWT/assets/49749125/f06bf886-ae77-439e-81d9-e26660d60a8e)
 
