@@ -2955,6 +2955,145 @@ public class HtmlBridge
 -----------------------------------------------
 ```Html
 
+/* main.js  —  ES5, component-agnostic, old-IE friendly */
+
+(function (global) {
+  'use strict';
+
+  // -------------------------------
+  // Config / constants
+  // -------------------------------
+  var CONTAINER_ID = 'bp-buttons';
+  var LOTTIE_CONTAINER_ID = 'bp-lottie';
+  var LOTTIE_PATH = 'lotties/ring.json';
+
+  // Para birimi sembolleri (gerekirse genişlet)
+  var SYMBOLS = { 'AED': 'Đ', 'TRY': '₺', 'USD': '$', 'EUR': '€' };
+
+  // -------------------------------
+  // Utilities
+  // -------------------------------
+  function formatAmount(n) {
+    var num = Number(n);
+    if (!isFinite(num)) return n;
+    var s = Math.floor(num).toString();
+    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); // 1000 -> 1,000
+  }
+
+  function byId(id) { return document.getElementById(id); }
+
+  // -------------------------------
+  // Bridge I/O
+  // -------------------------------
+  // 1) Ham JSON string'i köprüden çek
+  function fetchRawJsonFromBridge() {
+    // HtmlBridge.GetAmounts(): string (JSON)
+    return window.external.GetAmounts();
+  }
+
+  // 2) JSON'ı güvenle parse et (hata varsa boş model)
+  function parseJsonSafe(jsonText) {
+    try { return JSON.parse(jsonText); }
+    catch (e) { return { items: [] }; }
+  }
+
+  // 3) Sadece gerekli alanlara projekte et (Index, CurrencyCode, Amount, IsDispensible, AmountSource)
+  function projectPredefinedAmounts(model) {
+    var src = (model && model.items) ? model.items : [];
+    var out = [];
+    for (var i = 0; i < src.length; i++) {
+      var it = src[i] || {};
+      out.push({
+        Index: String(it.Index || ''),
+        CurrencyCode: String(it.CurrencyCode || ''),
+        Amount: Number(it.Amount || 0),
+        IsDispensible: !!it.IsDispensible,
+        AmountSource: String(it.AmountSource || 'Predefined')
+      });
+    }
+    return out;
+  }
+
+  // -------------------------------
+  // Lottie (opsiyonel)
+  // -------------------------------
+  function initLottieIfAvailable() {
+    try {
+      var host = byId(LOTTIE_CONTAINER_ID);
+      if (!host || !global.lottie) return;
+      global.lottie.loadAnimation({
+        container: host,
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        path: LOTTIE_PATH
+      });
+    } catch (_) { /* sessiz geç */ }
+  }
+
+  // -------------------------------
+  // UI — Buttons
+  // -------------------------------
+  function createButtonElement(item) {
+    var cell = document.createElement('div');
+    cell.className = 'bp-cell';
+
+    var btn = document.createElement('button');
+    btn.className = 'bp-btn';
+    if (!item.IsDispensible) btn.disabled = true;
+
+    var sym = SYMBOLS[item.CurrencyCode] || item.CurrencyCode;
+    btn.innerHTML = '<span class="bp-curr">' + sym + '</span>' + formatAmount(item.Amount);
+
+    btn.onclick = function () {
+      // Sadece tıkta kısa renk geri bildirimi
+      btn.className += ' is-pressed';
+      setTimeout(function () {
+        btn.className = btn.className.replace(' is-pressed', '');
+      }, 140);
+
+      // C# HtmlBridge: OnAmountClicked(index, currency, amount, isDispensible, amountSource)
+      window.external.OnAmountClicked(
+        item.Index,
+        item.CurrencyCode,
+        item.Amount,
+        item.IsDispensible,
+        item.AmountSource
+      );
+    };
+
+    cell.appendChild(btn);
+    return cell;
+  }
+
+  function renderButtons(items) {
+    var host = byId(CONTAINER_ID);
+    if (!host) return;
+    host.innerHTML = '';
+    for (var i = 0; i < items.length; i++) {
+      host.appendChild(createButtonElement(items[i]));
+    }
+  }
+
+  // -------------------------------
+  // Public API
+  // -------------------------------
+  var ButtonsApp = {
+    initialize: function () {
+      initLottieIfAvailable();
+
+      var raw = fetchRawJsonFromBridge();              // string
+      var model = parseJsonSafe(raw);                  // { items:[...] }
+      var projected = projectPredefinedAmounts(model); // sadece gerekli alanlar
+
+      renderButtons(projected);
+    }
+  };
+
+  // Global’e aç
+  global.ButtonsUI = ButtonsApp;
+
+})(window);
 
 
 
