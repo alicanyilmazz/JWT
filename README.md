@@ -2955,145 +2955,220 @@ public class HtmlBridge
 -----------------------------------------------
 ```Html
 
-/* main.js  —  ES5, component-agnostic, old-IE friendly */
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta charset="utf-8" />
+    <title>Predefined Amounts</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-(function (global) {
-  'use strict';
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-  // -------------------------------
-  // Config / constants
-  // -------------------------------
-  var CONTAINER_ID = 'bp-buttons';
-  var LOTTIE_CONTAINER_ID = 'bp-lottie';
-  var LOTTIE_PATH = 'lotties/ring.json';
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
 
-  // Para birimi sembolleri (gerekirse genişlet)
-  var SYMBOLS = { 'AED': 'Đ', 'TRY': '₺', 'USD': '$', 'EUR': '€' };
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
 
-  // -------------------------------
-  // Utilities
-  // -------------------------------
-  function formatAmount(n) {
-    var num = Number(n);
-    if (!isFinite(num)) return n;
-    var s = Math.floor(num).toString();
-    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); // 1000 -> 1,000
-  }
+        .amount-button {
+            background: white;
+            border: none;
+            border-radius: 16px;
+            padding: 32px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
 
-  function byId(id) { return document.getElementById(id); }
+        .amount-button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
 
-  // -------------------------------
-  // Bridge I/O
-  // -------------------------------
-  // 1) Ham JSON string'i köprüden çek
-  function fetchRawJsonFromBridge() {
-    // HtmlBridge.GetAmounts(): string (JSON)
-    return window.external.GetAmounts();
-  }
+        .amount-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
 
-  // 2) JSON'ı güvenle parse et (hata varsa boş model)
-  function parseJsonSafe(jsonText) {
-    try { return JSON.parse(jsonText); }
-    catch (e) { return { items: [] }; }
-  }
+        .amount-button:hover:before {
+            opacity: 1;
+        }
 
-  // 3) Sadece gerekli alanlara projekte et (Index, CurrencyCode, Amount, IsDispensible, AmountSource)
-  function projectPredefinedAmounts(model) {
-    var src = (model && model.items) ? model.items : [];
-    var out = [];
-    for (var i = 0; i < src.length; i++) {
-      var it = src[i] || {};
-      out.push({
-        Index: String(it.Index || ''),
-        CurrencyCode: String(it.CurrencyCode || ''),
-        Amount: Number(it.Amount || 0),
-        IsDispensible: !!it.IsDispensible,
-        AmountSource: String(it.AmountSource || 'Predefined')
-      });
-    }
-    return out;
-  }
+        .amount-button:active {
+            transform: translateY(-2px);
+        }
 
-  // -------------------------------
-  // Lottie (opsiyonel)
-  // -------------------------------
-  function initLottieIfAvailable() {
-    try {
-      var host = byId(LOTTIE_CONTAINER_ID);
-      if (!host || !global.lottie) return;
-      global.lottie.loadAnimation({
-        container: host,
-        renderer: 'svg',
-        loop: true,
-        autoplay: true,
-        path: LOTTIE_PATH
-      });
-    } catch (_) { /* sessiz geç */ }
-  }
+        .amount-button .content {
+            position: relative;
+            z-index: 1;
+        }
 
-  // -------------------------------
-  // UI — Buttons
-  // -------------------------------
-  function createButtonElement(item) {
-    var cell = document.createElement('div');
-    cell.className = 'bp-cell';
+        .amount-button .currency {
+            font-size: 18px;
+            font-weight: 500;
+            color: #667eea;
+            transition: color 0.3s ease;
+        }
 
-    var btn = document.createElement('button');
-    btn.className = 'bp-btn';
-    if (!item.IsDispensible) btn.disabled = true;
+        .amount-button:hover .currency {
+            color: white;
+        }
 
-    var sym = SYMBOLS[item.CurrencyCode] || item.CurrencyCode;
-    btn.innerHTML = '<span class="bp-curr">' + sym + '</span>' + formatAmount(item.Amount);
+        .amount-button .value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #2d3748;
+            margin-top: 8px;
+            transition: color 0.3s ease;
+        }
 
-    btn.onclick = function () {
-      // Sadece tıkta kısa renk geri bildirimi
-      btn.className += ' is-pressed';
-      setTimeout(function () {
-        btn.className = btn.className.replace(' is-pressed', '');
-      }, 140);
+        .amount-button:hover .value {
+            color: white;
+        }
 
-      // C# HtmlBridge: OnAmountClicked(index, currency, amount, isDispensible, amountSource)
-      window.external.OnAmountClicked(
-        item.Index,
-        item.CurrencyCode,
-        item.Amount,
-        item.IsDispensible,
-        item.AmountSource
-      );
-    };
+        @media (max-width: 768px) {
+            .buttons-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
 
-    cell.appendChild(btn);
-    return cell;
-  }
+            .amount-button {
+                padding: 24px 16px;
+            }
 
-  function renderButtons(items) {
-    var host = byId(CONTAINER_ID);
-    if (!host) return;
-    host.innerHTML = '';
-    for (var i = 0; i < items.length; i++) {
-      host.appendChild(createButtonElement(items[i]));
-    }
-  }
+            .amount-button .value {
+                font-size: 28px;
+            }
+        }
 
-  // -------------------------------
-  // Public API
-  // -------------------------------
-  var ButtonsApp = {
-    initialize: function () {
-      initLottieIfAvailable();
+        @media (max-width: 480px) {
+            .buttons-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="buttonsContainer" class="buttons-grid"></div>
+    </div>
 
-      var raw = fetchRawJsonFromBridge();              // string
-      var model = parseJsonSafe(raw);                  // { items:[...] }
-      var projected = projectPredefinedAmounts(model); // sadece gerekli alanlar
+    <script>
+        (function() {
+            'use strict';
 
-      renderButtons(projected);
-    }
-  };
+            function initialize() {
+                try {
+                    var jsonString = window.external.GetAmounts();
+                    var amounts = parseJson(jsonString);
+                    renderButtons(amounts);
+                } catch (e) {
+                    // Hata durumunda sessiz kal
+                }
+            }
 
-  // Global’e aç
-  global.ButtonsUI = ButtonsApp;
+            function parseJson(jsonString) {
+                return JSON.parse(jsonString);
+            }
 
-})(window);
+            function renderButtons(amounts) {
+                var container = document.getElementById('buttonsContainer');
+                container.innerHTML = '';
+                
+                var displayAmounts = amounts.slice(0, 6);
+                
+                for (var i = 0; i < displayAmounts.length; i++) {
+                    var button = createButton(displayAmounts[i]);
+                    container.appendChild(button);
+                }
+            }
+
+            function createButton(amount) {
+                var button = document.createElement('button');
+                button.className = 'amount-button';
+                
+                var content = document.createElement('div');
+                content.className = 'content';
+                
+                var currency = document.createElement('div');
+                currency.className = 'currency';
+                currency.textContent = amount.CurrencyCode;
+                
+                var value = document.createElement('div');
+                value.className = 'value';
+                value.textContent = formatAmount(amount.Amount);
+                
+                content.appendChild(currency);
+                content.appendChild(value);
+                button.appendChild(content);
+                
+                button.onclick = function() {
+                    handleClick(amount);
+                };
+                
+                return button;
+            }
+
+            function formatAmount(amount) {
+                return Math.floor(amount).toLocaleString('tr-TR');
+            }
+
+            function handleClick(amount) {
+                try {
+                    window.external.OnAmountSelected(
+                        amount.Index,
+                        amount.Amount,
+                        amount.CurrencyCode,
+                        amount.IsDispensible,
+                        amount.AmountSource
+                    );
+                } catch (e) {
+                    // Hata durumunda sessiz kal
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initialize);
+            } else {
+                initialize();
+            }
+
+            window.refreshAmounts = function() {
+                initialize();
+            };
+
+        })();
+    </script>
+</body>
+</html>
 
 
 
