@@ -2954,199 +2954,64 @@ public class HtmlBridge
 ```
 -----------------------------------------------
 ```Html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta charset="utf-8" />
-    <title>Predefined Amounts with Lottie</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  public static class WebBrowserHelper
+    {
+        private static bool _isInitialized = false;
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f5f5f5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            position: relative;
-            width: 100%;
-            max-width: 1200px;
-        }
-
-        .lottie-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 1;
-        }
-
-        .buttons-wrapper {
-            position: relative;
-            z-index: 2;
-        }
-
-        .buttons-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-        }
-
-        .amount-button {
-            background: white;
-            border: 2px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 30px 20px;
-            cursor: pointer;
-            transition: background 0.2s ease;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-
-        .amount-button:active {
-            background: #f0f0f0;
-        }
-
-        .amount-button .content {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .amount-button .text {
-            font-size: 24px;
-            font-weight: 600;
-            color: #2d3748;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- Lottie animasyonu burada olacak -->
-        <div class="lottie-container" id="lottieContainer"></div>
-        
-        <!-- Butonlar -->
-        <div class="buttons-wrapper">
-            <div id="buttonsContainer" class="buttons-grid"></div>
-        </div>
-    </div>
-
-    <!-- Lottie kütüphanesi -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-
-    <script>
-        (function() {
-            'use strict';
-
-            // Lottie animasyonunu başlat
-            function initializeLottie() {
-                try {
-                    var animation = lottie.loadAnimation({
-                        container: document.getElementById('lottieContainer'),
-                        renderer: 'svg',
-                        loop: true,
-                        autoplay: true,
-                        path: 'animation.json' // Lottie JSON dosyanızın yolu
-                    });
-                } catch (e) {
-                    // Lottie yüklenemezse sessiz kal
-                }
-            }
-
-            function initialize() {
-                try {
-                    var jsonString = window.external.GetAmounts();
-                    var amounts = parseJson(jsonString);
-                    renderButtons(amounts);
-                    initializeLottie();
-                } catch (e) {
-                    // Hata durumunda sessiz kal
-                }
-            }
-
-            function parseJson(jsonString) {
-                return JSON.parse(jsonString);
-            }
-
-            function renderButtons(amounts) {
-                var container = document.getElementById('buttonsContainer');
-                container.innerHTML = '';
+        /// <summary>
+        /// WebBrowser oluşturmadan ÖNCE çağırın
+        /// </summary>
+        public static void EnableModernMode()
+        {
+            if (_isInitialized) return;
+            
+            try
+            {
+                var fileName = Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName);
+                SetBrowserFeatureControlKey("FEATURE_BROWSER_EMULATION", fileName, GetBrowserEmulationMode());
+                SetBrowserFeatureControlKey("FEATURE_AJAX_CONNECTIONEVENTS", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_ENABLE_CLIPCHILDREN_OPTIMIZATION", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_MANAGE_SCRIPT_CIRCULAR_REFS", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_DOMSTORAGE", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_GPU_RENDERING", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_IVIEWOBJECTDRAW_DMLT9_WITH_GDI", fileName, 0);
+                SetBrowserFeatureControlKey("FEATURE_DISABLE_LEGACY_COMPRESSION", fileName, 1);
+                SetBrowserFeatureControlKey("FEATURE_LOCALMACHINE_LOCKDOWN", fileName, 0);
+                SetBrowserFeatureControlKey("FEATURE_BLOCK_LMZ_OBJECT", fileName, 0);
+                SetBrowserFeatureControlKey("FEATURE_BLOCK_LMZ_SCRIPT", fileName, 0);
                 
-                var displayAmounts = amounts.slice(0, 4);
-                
-                for (var i = 0; i < displayAmounts.length; i++) {
-                    var button = createButton(displayAmounts[i]);
-                    container.appendChild(button);
-                }
+                _isInitialized = true;
             }
-
-            function createButton(amount) {
-                var button = document.createElement('button');
-                button.className = 'amount-button';
-                
-                var content = document.createElement('div');
-                content.className = 'content';
-                
-                var text = document.createElement('div');
-                text.className = 'text';
-                text.textContent = amount.CurrencyCode + ' ' + formatAmount(amount.Amount);
-                
-                content.appendChild(text);
-                button.appendChild(content);
-                
-                button.onclick = function() {
-                    handleClick(amount);
-                };
-                
-                return button;
+            catch (Exception)
+            {
+                // Registry erişimi başarısız - sessiz kal
             }
+        }
 
-            function formatAmount(amount) {
-                return Math.floor(amount).toLocaleString('tr-TR');
+        /// <summary>
+        /// WebBrowser oluştur ve döndür (IE11 modunda)
+        /// </summary>
+        public static WebBrowser CreateWebBrowser()
+        {
+            EnableModernMode();
+            return new WebBrowser();
+        }
+
+        private static void SetBrowserFeatureControlKey(string feature, string appName, uint value)
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(
+                $@"Software\Microsoft\Internet Explorer\Main\FeatureControl\{feature}",
+                RegistryKeyPermissionCheck.ReadWriteSubTree))
+            {
+                key?.SetValue(appName, value, RegistryValueKind.DWord);
             }
+        }
 
-            function handleClick(amount) {
-                try {
-                    window.external.OnAmountSelected(
-                        amount.Index,
-                        amount.Amount,
-                        amount.CurrencyCode,
-                        amount.IsDispensible,
-                        amount.AmountSource
-                    );
-                } catch (e) {
-                    // Hata durumunda sessiz kal
-                }
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initialize);
-            } else {
-                initialize();
-            }
-
-            window.refreshAmounts = function() {
-                initialize();
-            };
-
-        })();
-    </script>
-</body>
-</html>
-
-
+        private static uint GetBrowserEmulationMode()
+        {
+            return 11001; // IE11 Edge mode
+        }
+    }
 
 
 ```
