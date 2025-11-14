@@ -3076,39 +3076,80 @@ public static class PredefinedAmountManager
 
 ```
 
-------------------LAST CLAUDE-----------------------------
+-----------------daasdsadE-----------------------------
 ```c#
+// predefined: List<PredefinedAmount>
+var items = predefined.Select(p => new {
+    p.Index,
+    p.CurrencyCode,
+    p.Amount,
+    p.IsDispensible,
+    AmountSource = p.AmountSource.ToString() // "Predefined" vb.
+}).ToList();
+
+var json = System.Text.Json.JsonSerializer.Serialize(new { items });
+
+await webView2.EnsureCoreWebView2Async();
+
+// Sayfa yüklendikten (NavigationCompleted) sonra:
+await webView2.CoreWebView2.ExecuteScriptAsync($@"
+  window.fastCashData = {json};
+  if (window.initializeButtons) initializeButtons();
+");
+
+// (Alternatif: açık sayfada güncellemek için)
+var msg = new { type="fastcashUpdate", payload=new { items } };
+webView2.CoreWebView2.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(msg));
 
 ```
 ------------------ttt 2-----------------------------
 ```c#
 
-// --- Basit veri/format yardımcıları ---
-const CURRENCY_SYMBOLS = { AED:'Đ', TRY:'₺', USD:'$', EUR:'€' };
-const formatAmount = n => Number(n).toLocaleString('en-US',{maximumFractionDigits:0});
+// Semboller (gerekirse genişlet)
+const SYMBOLS = { AED:'Đ', TRY:'₺', USD:'$', EUR:'€' };
+const fmt = n => Number(n).toLocaleString('en-US',{maximumFractionDigits:0});
 
-function sendToDotNet(index, currency, amount){
-  const payload = { index, currency, amount };
-  try{
-    if(window.bridge?.OnAmountSelected){
-      window.bridge.OnAmountSelected(index, amount, currency, "PREDEFINED");
-      return;
-    }
-  }catch{}
-  if(window.chrome?.webview){
-    window.chrome.webview.postMessage({ type:"amountSelected", data:payload });
-  }
+/**
+ * C# sayfa yüklenmeden önce (veya sonra) şunu enjekte edecek:
+ * window.fastCashData = {
+ *   items: [
+ *     { Index:"pre_1", CurrencyCode:"AED", Amount:100,  IsDispensible:true,  AmountSource:"Predefined" },
+ *     { Index:"pre_2", CurrencyCode:"AED", Amount:200,  IsDispensible:true,  AmountSource:"Predefined" },
+ *     ... toplam 6 kayıt ...
+ *   ]
+ * }
+ */
+
+function initializeButtons(){
+  initLottieRing();
+
+  const items = (window.fastCashData && Array.isArray(window.fastCashData.items))
+    ? window.fastCashData.items
+    : []; // boşsa hiç buton çizme
+
+  const host = document.getElementById('buttons');
+  host.innerHTML = '';
+
+  items.forEach(item => addButton(host, item));
 }
 
-function addButton(container, idx, currency, amount){
+function addButton(container, item){
   const btn = document.createElement('button');
   btn.className = 'fast-btn';
-  btn.innerHTML = `<span class="currency">${CURRENCY_SYMBOLS[currency]||currency}</span>${formatAmount(amount)}`;
-  btn.onclick = () => sendToDotNet(`pre_${idx}`, currency, amount);
+  btn.disabled = !item.IsDispensible;
+
+  const sym = SYMBOLS[item.CurrencyCode] || item.CurrencyCode;
+  btn.innerHTML = `<span class="currency">${sym}</span>${fmt(item.Amount)}`;
+
+  // Her buton kendi onclick'i ile C#'a 5 alanı yollar
+  btn.onclick = () => onButtonClick(
+    item.Index, item.CurrencyCode, item.Amount, !!item.IsDispensible, item.AmountSource || 'Predefined'
+  );
+
   container.appendChild(btn);
 }
 
-// --- Lottie ring'i yükle ---
+/* Lottie: paneli saran ring/çerçeve */
 function initLottieRing(){
   try{
     lottie.loadAnimation({
@@ -3116,132 +3157,98 @@ function initLottieRing(){
       renderer: 'svg',
       loop: true,
       autoplay: true,
-      // Kendi animasyon yolunu ver (örn. yuvarlak köşeli çerçeve/ring animasyonu)
-      path: 'lotties/ring.json'
+      path: 'lotties/ring.json'  // kendi Lottie dosya yolunu ver
     });
   }catch{}
 }
 
-// --- Sayfa kurulumu ---
-function initializeFastCash(){
-  // Limit (C# enjekte edebilir)
-  const limitEl = document.getElementById('limit');
-  const limitValue = 20000; // örnek
-  limitEl.textContent = `${CURRENCY_SYMBOLS.AED} ${formatAmount(limitValue)}`;
+/* C# köprüsü: HostObject varsa onu, yoksa WebMessage kullan */
+function onButtonClick(index, currency, amount, isDispensible, amountSource){
+  // HostObject: window.bridge.OnPredefinedClicked(index, amount, currency, isDispensible, amountSource)
+  try{
+    if (window.bridge?.OnPredefinedClicked) {
+      window.bridge.OnPredefinedClicked(index, amount, currency, isDispensible, String(amountSource));
+      return;
+    }
+  }catch{}
 
-  // Lottie’yi başlat
-  initLottieRing();
-
-  // 6 butonu doldur (C# burayı enjekte edebilir)
-  const data = [
-    { amount:100,  currency:'AED' },
-    { amount:200,  currency:'AED' },
-    { amount:500,  currency:'AED' },
-    { amount:800,  currency:'AED' },
-    { amount:1000, currency:'AED' },
-    { amount:1500, currency:'AED' }
-  ];
-
-  const host = document.getElementById('buttons-container');
-  host.innerHTML = '';
-  data.forEach((x,i)=> addButton(host, i+1, x.currency, x.amount));
-}
-
-// (Opsiyonel) C# → JS güncellemesi
-try{
-  if(window.chrome?.webview){
-    window.chrome.webview.addEventListener('message', e=>{
-      if(e.data?.type === 'fastcashUpdate'){
-        const { limit, items } = e.data.payload || {};
-        if(limit != null) document.getElementById('limit').textContent =
-          `${CURRENCY_SYMBOLS.AED} ${formatAmount(limit)}`;
-        if(Array.isArray(items)){
-          const host = document.getElementById('buttons-container');
-          host.innerHTML = '';
-          items.forEach((x,i)=> addButton(host, i+1, x.currency, x.amount));
-        }
-      }
+  // WebMessage fallback
+  if (window.chrome?.webview){
+    window.chrome.webview.postMessage({
+      type: 'predefinedClicked',
+      data: { Index:index, CurrencyCode:currency, Amount:amount, IsDispensible:isDispensible, AmountSource:String(amountSource) }
     });
   }
+}
+
+/* (Opsiyonel) C# sonradan güncellerse */
+try{
+  window.chrome?.webview?.addEventListener('message', e=>{
+    if (e.data?.type === 'fastcashUpdate'){
+      window.fastCashData = e.data.payload;   // { items:[...] }
+      initializeButtons();
+    }
+  });
 }catch{}
 
 
 ```
 ------------------ttt 1-----------------------------
-```c#
-body{margin:0;padding:0;background:#fdfdfd;font-family:"Segoe UI",Arial,sans-serif;user-select:none}
-#wrapper{width:1024px;padding:20px 40px;box-sizing:border-box}
+```css
+html,body{margin:0;padding:0;background:#fdfdfd;font-family:"Segoe UI",Arial,sans-serif;user-select:none}
 
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;font-size:20px;color:#2b3a42}
-.title{font-weight:600}
-.limit{font-size:18px;color:#555}
-
-/* Panel: Lottie bu panelin etrafında görünür */
 #panel{
   position:relative;
-  padding:28px;                 /* Lottie çerçevesine nefes payı */
+  padding:28px;
   border-radius:18px;
   background:#fff;
   box-shadow:0 6px 22px rgba(0,0,0,.06);
-  overflow:hidden;               /* Lottie taşmasın */
+  overflow:hidden;
+  width:1024px;              /* gerekirse kaldır/uyarla */
+  margin:24px auto;
 }
 
-/* Lottie katmanı: tüm paneli kaplasın, tıklamayı engellemesin */
-#lottie-ring{
-  position:absolute; inset:0;
-  pointer-events:none;           /* butonlar tıklanabilsin */
-  z-index:0;                     /* arkada */
-}
+/* Lottie tüm paneli sarar; tıklamayı engellemesin */
+#lottie-ring{position:absolute;inset:0;pointer-events:none;z-index:0}
 
-/* Buton grid’i */
-#buttons-container{
-  position:relative; z-index:1;  /* Lottie’nin üstünde */
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:24px;
+/* 6’lı grid (2 satır x 3 sütun) */
+#buttons{
+  position:relative; z-index:1;
+  display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
 }
 
 .fast-btn{
-  height:90px;border-radius:12px;border:1px solid #dfe4ea;background:#f9fafb;
-  font-size:26px;color:#1b2b3a;box-shadow:0 2px 6px rgba(0,0,0,.08);
-  cursor:pointer;transition:all .1s ease-in-out
+  height:90px; border-radius:12px; border:1px solid #dfe4ea; background:#f9fafb;
+  font-size:26px; color:#1b2b3a; box-shadow:0 2px 6px rgba(0,0,0,.08);
+  cursor:pointer; transition:all .1s;
 }
-.fast-btn:active{transform:scale(.97);background:#eef1f4}
-.currency{font-weight:600;margin-right:6px}
+.fast-btn:active{transform:scale(.97); background:#eef1f4}
+.fast-btn:disabled{opacity:.35; cursor:not-allowed}
+
+.currency{font-weight:600; margin-right:6px}
 
 ```
 -----------------------------------------------
 ```Html
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Fast Cash Options</title>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta charset="utf-8" />
+  <title>Fast Cash Buttons</title>
   <link rel="stylesheet" href="css/fastcash.css" />
   <script src="js/lottie.min.js"></script>
   <script src="js/fastcash.js"></script>
 </head>
-
-<body onload="initializeFastCash()">
-  <div id="wrapper">
-    <div class="header">
-      <span class="title">⭐ Fast cash options</span>
-      <span class="limit">Your withdrawal limit is <span id="limit"></span></span>
-    </div>
-
-    <!-- PANEL: Lottie çerçevesi bu panelin etrafında dönecek -->
-    <section id="panel">
-      <!-- Lottie katmanı -->
-      <div id="lottie-ring" aria-hidden="true"></div>
-
-      <!-- Butonlar -->
-      <div id="buttons-container"></div>
-    </section>
-  </div>
+<body onload="initializeButtons()">
+  <!-- Sadece panel + butonlar -->
+  <section id="panel">
+    <div id="lottie-ring" aria-hidden="true"></div>  <!-- Lottie arka plan -->
+    <div id="buttons"></div>                          <!-- 6’lı grid -->
+  </section>
 </body>
 </html>
+
 
 
 ```
