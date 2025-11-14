@@ -2954,13 +2954,12 @@ public class HtmlBridge
 ```
 -----------------------------------------------
 ```Html
-
 <!DOCTYPE html>
 <html>
 <head>
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta charset="utf-8" />
-    <title>Predefined Amounts</title>
+    <title>Predefined Amounts with Lottie</title>
     <style>
         * {
             margin: 0;
@@ -2970,7 +2969,7 @@ public class HtmlBridge
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -2979,117 +2978,99 @@ public class HtmlBridge
         }
 
         .container {
-            width: 100%;
-            max-width: 800px;
-        }
-
-        .buttons-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-
-        .amount-button {
-            background: white;
-            border: none;
-            border-radius: 16px;
-            padding: 32px 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             position: relative;
-            overflow: hidden;
+            width: 100%;
+            max-width: 1200px;
         }
 
-        .amount-button:before {
-            content: '';
+        .lottie-container {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .amount-button:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        }
-
-        .amount-button:hover:before {
-            opacity: 1;
-        }
-
-        .amount-button:active {
-            transform: translateY(-2px);
-        }
-
-        .amount-button .content {
-            position: relative;
+            pointer-events: none;
             z-index: 1;
         }
 
-        .amount-button .currency {
-            font-size: 18px;
-            font-weight: 500;
-            color: #667eea;
-            transition: color 0.3s ease;
+        .buttons-wrapper {
+            position: relative;
+            z-index: 2;
         }
 
-        .amount-button:hover .currency {
-            color: white;
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
         }
 
-        .amount-button .value {
-            font-size: 36px;
-            font-weight: 700;
+        .amount-button {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 30px 20px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .amount-button:active {
+            background: #f0f0f0;
+        }
+
+        .amount-button .content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .amount-button .text {
+            font-size: 24px;
+            font-weight: 600;
             color: #2d3748;
-            margin-top: 8px;
-            transition: color 0.3s ease;
-        }
-
-        .amount-button:hover .value {
-            color: white;
-        }
-
-        @media (max-width: 768px) {
-            .buttons-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 15px;
-            }
-
-            .amount-button {
-                padding: 24px 16px;
-            }
-
-            .amount-button .value {
-                font-size: 28px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .buttons-grid {
-                grid-template-columns: 1fr;
-            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="buttonsContainer" class="buttons-grid"></div>
+        <!-- Lottie animasyonu burada olacak -->
+        <div class="lottie-container" id="lottieContainer"></div>
+        
+        <!-- Butonlar -->
+        <div class="buttons-wrapper">
+            <div id="buttonsContainer" class="buttons-grid"></div>
+        </div>
     </div>
+
+    <!-- Lottie kütüphanesi -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 
     <script>
         (function() {
             'use strict';
+
+            // Lottie animasyonunu başlat
+            function initializeLottie() {
+                try {
+                    var animation = lottie.loadAnimation({
+                        container: document.getElementById('lottieContainer'),
+                        renderer: 'svg',
+                        loop: true,
+                        autoplay: true,
+                        path: 'animation.json' // Lottie JSON dosyanızın yolu
+                    });
+                } catch (e) {
+                    // Lottie yüklenemezse sessiz kal
+                }
+            }
 
             function initialize() {
                 try {
                     var jsonString = window.external.GetAmounts();
                     var amounts = parseJson(jsonString);
                     renderButtons(amounts);
+                    initializeLottie();
                 } catch (e) {
                     // Hata durumunda sessiz kal
                 }
@@ -3103,7 +3084,7 @@ public class HtmlBridge
                 var container = document.getElementById('buttonsContainer');
                 container.innerHTML = '';
                 
-                var displayAmounts = amounts.slice(0, 6);
+                var displayAmounts = amounts.slice(0, 4);
                 
                 for (var i = 0; i < displayAmounts.length; i++) {
                     var button = createButton(displayAmounts[i]);
@@ -3118,16 +3099,11 @@ public class HtmlBridge
                 var content = document.createElement('div');
                 content.className = 'content';
                 
-                var currency = document.createElement('div');
-                currency.className = 'currency';
-                currency.textContent = amount.CurrencyCode;
+                var text = document.createElement('div');
+                text.className = 'text';
+                text.textContent = amount.CurrencyCode + ' ' + formatAmount(amount.Amount);
                 
-                var value = document.createElement('div');
-                value.className = 'value';
-                value.textContent = formatAmount(amount.Amount);
-                
-                content.appendChild(currency);
-                content.appendChild(value);
+                content.appendChild(text);
                 button.appendChild(content);
                 
                 button.onclick = function() {
