@@ -2828,426 +2828,134 @@ public class GenerateData
 ```
 ------------------LAST GPT-----------------------------
 ```c#
-using System;
-using System.Collections.Generic;
-using System.Linq;
+<!doctype html>
+<html>
+<head>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta charset="utf-8" />
+  <title>Buttons Panel</title>
+  <link rel="stylesheet" href="css/fastbuttons.css" />
+  <script type="text/javascript" src="js/lottie.min.js"></script> <!-- varsa -->
+  <script type="text/javascript" src="js/fastbuttons.js"></script>
+</head>
+<body onload="ButtonsUI.initialize()">
+  <section id="bp-panel">
+    <div id="bp-lottie" aria-hidden="true"></div>
+    <div id="bp-buttons"></div>
+  </section>
+</body>
+</html>
 
-#region Models
-
-public enum AmountSource { Predefined, Suggested, Calculated }
-
-public abstract class BaseAmount
-{
-    public string  Index         { get; set; }   // "pre_1".."pre_n" | "sgg_1".."sgg_m" | "calc_k"
-    public string  CurrencyCode  { get; set; }
-    public decimal Amount        { get; set; }
-    public bool    IsDispensible { get; set; }
-
-    protected BaseAmount(string index, decimal amount, string currency)
-    {
-        Index        = index;
-        Amount       = amount;
-        CurrencyCode = currency;
-    }
-}
-
-public sealed class SuggestedAmounts : BaseAmount
-{
-    public SuggestedAmounts(string index, decimal amount, string currency)
-        : base(index, amount, currency) { }
-}
-
-public sealed class PredefinedAmounts : BaseAmount
-{
-    public AmountSource AmountSource { get; set; } = AmountSource.Predefined;
-
-    /// <summary>Bu slot bir değerle değiştirildiyse; "sgg_i" veya "calc_k" gibi bir iz bırakılır.</summary>
-    public string ReplacedIndex { get; set; } = string.Empty;
-
-    public PredefinedAmounts(string index, decimal amount, string currency)
-        : base(index, amount, currency) { }
-}
-
-#endregion
-
-public static class PredefinedAmountManager
-{
-    private const string DefaultCalcPrefix = "calc_";
-
-    // ------------------------- PreCalculation -------------------------
-
-    /// <summary>Yalnızca flag’leri set edip geri döner.</summary>
-    public static IList<PredefinedAmounts> GetAmounts(IList<PredefinedAmounts> predefinedAmounts)
-    {
-        SetDispensibility(predefinedAmounts);
-        return predefinedAmounts;
-    }
-
-    /// <summary>Önerilen (API) tutarları yerleştirir, kalan disabled slotları katlarla doldurur.</summary>
-    public static IList<PredefinedAmounts> GetAmounts(
-        IList<PredefinedAmounts> predefinedAmounts,
-        IList<SuggestedAmounts>  suggestedAmounts)
-    {
-        var baseline = SnapshotBaselineByIndex(predefinedAmounts);
-
-        SetDispensibility(predefinedAmounts);
-        SetDispensibility(suggestedAmounts);
-
-        new SlotReplacer(predefinedAmounts, suggestedAmounts, baseline).ReplaceSlots();
-        new DisabledSlotFiller(predefinedAmounts, baseline, DefaultCalcPrefix).FillSlots();
-
-        return predefinedAmounts;
-    }
-
-    public static void SetDispensibility<T>(IEnumerable<T> items) where T : BaseAmount
-    {
-        foreach (var x in items ?? Enumerable.Empty<T>())
-            x.IsDispensible = DispensibilityManager.IsAmountDispensible(x.Amount, x.CurrencyCode);
-    }
-
-    public static IReadOnlyDictionary<string, decimal> SnapshotBaselineByIndex(IList<PredefinedAmounts> pre)
-        => pre.ToDictionary(p => p.Index, p => p.Amount, StringComparer.Ordinal);
-
-    // ---------------------------- Validation ----------------------------
-
-    private static void ValidateBaselineCoverage(
-        IList<PredefinedAmounts> slots,
-        IReadOnlyDictionary<string, decimal> baselineByIndex)
-    {
-        if (slots == null)                   throw new ArgumentNullException(nameof(slots));
-        if (baselineByIndex == null)         throw new ArgumentNullException(nameof(baselineByIndex));
-
-        var missing = slots.Select(s => s.Index)
-                           .Where(idx => !baselineByIndex.ContainsKey(idx))
-                           .ToList();
-        if (missing.Count > 0)
-            throw new ArgumentException("Baseline sözlüğü şu indexleri içermiyor: " + string.Join(", ", missing));
-    }
-
-    // =============================== SlotReplacer ===============================
-
-    private sealed class SlotReplacer
-    {
-        private readonly IList<PredefinedAmounts>              _predefinedAmounts;
-        private readonly IReadOnlyDictionary<string, decimal>   _baselineByIndex;
-        private readonly List<SuggestedAmounts>                 _remainingSuggestedAmounts;
-        private readonly HashSet<decimal>                       _currentAmounts; // duplicate’leri engelle
-
-        public SlotReplacer(
-            IList<PredefinedAmounts> slots,
-            IEnumerable<SuggestedAmounts> apiAmounts,
-            IReadOnlyDictionary<string, decimal> baselineByIndex)
-        {
-            _predefinedAmounts        = slots ?? throw new ArgumentNullException(nameof(slots));
-            _baselineByIndex          = baselineByIndex ?? throw new ArgumentNullException(nameof(baselineByIndex));
-            _remainingSuggestedAmounts = apiAmounts?.Where(a => a != null && a.IsDispensible).ToList()
-                                          ?? new List<SuggestedAmounts>();
-            _currentAmounts           = new HashSet<decimal>(_predefinedAmounts.Select(s => s.Amount));
-        }
-
-        public void ReplaceSlots()
-        {
-            if (_predefinedAmounts.Count == 0 || _remainingSuggestedAmounts.Count == 0) return;
-            ValidateBaselineCoverage(_predefinedAmounts, _baselineByIndex);
-
-            // 1) önce ENABLE, 2) sonra DISABLE slotlara yerleştir
-            ReplaceInPhase(isDispensible: true);
-            ReplaceInPhase(isDispensible: false);
-        }
-
-        private void ReplaceInPhase(bool isDispensible)
-        {
-            // RemoveAt O(1) olsun diye sondan başa doğru geziyoruz
-            for (int i = _remainingSuggestedAmounts.Count - 1; i >= 0; i--)
-            {
-                var api = _remainingSuggestedAmounts[i];
-                if (api == null) continue;
-
-                // Aynı tutarı ikinci kez yerleştirmeyelim
-                if (_currentAmounts.Contains(api.Amount))
-                    continue;
-
-                var candidateIdx = Enumerable.Range(0, _predefinedAmounts.Count)
-                    .Where(idx =>
-                        _predefinedAmounts[idx].IsDispensible == isDispensible &&
-                        string.IsNullOrEmpty(_predefinedAmounts[idx].ReplacedIndex))
-                    .ToList();
-
-                if (candidateIdx.Count == 0) continue;
-
-                var best = FindNearestSlotIndex(candidateIdx, api.Amount);
-                if (!best.HasValue) continue;
-
-                ReplaceSlot(best.Value, api);
-                _remainingSuggestedAmounts.RemoveAt(i); // sondan sil: O(1)
-            }
-        }
-
-        private int? FindNearestSlotIndex(IEnumerable<int> candidateIndices, decimal targetAmount)
-            => candidateIndices
-                 .Select(i => new { i, Base = _baselineByIndex[_predefinedAmounts[i].Index] })
-                 .OrderBy(x => Math.Abs(x.Base - targetAmount)) // en yakın baseline
-                 .ThenBy(x => x.Base)                           // eşitlikte küçük baseline
-                 .ThenBy(x => x.i)                              // hâlâ eşitse küçük index
-                 .Select(x => (int?)x.i)
-                 .FirstOrDefault();
-
-        private void ReplaceSlot(int slotIndex, SuggestedAmounts apiAmount)
-        {
-            var slot = _predefinedAmounts[slotIndex];
-            slot.Amount        = apiAmount.Amount;
-            slot.AmountSource  = AmountSource.Suggested;
-            slot.ReplacedIndex = apiAmount.Index;
-            slot.IsDispensible = true;
-
-            _currentAmounts.Add(slot.Amount);
-        }
-    }
-
-    // ============================ DisabledSlotFiller ============================
-
-    private sealed class DisabledSlotFiller
-    {
-        private readonly IList<PredefinedAmounts>              _slots;
-        private readonly IReadOnlyDictionary<string, decimal>   _baselineByIndex;
-        private readonly string                                 _calcPrefix;
-
-        public DisabledSlotFiller(
-            IList<PredefinedAmounts> slots,
-            IReadOnlyDictionary<string, decimal> baselineByIndex,
-            string calcPrefix = DefaultCalcPrefix)
-        {
-            _slots           = slots          ?? throw new ArgumentNullException(nameof(slots));
-            _baselineByIndex = baselineByIndex ?? throw new ArgumentNullException(nameof(baselineByIndex));
-            _calcPrefix      = string.IsNullOrWhiteSpace(calcPrefix) ? DefaultCalcPrefix : calcPrefix;
-        }
-
-        public void FillSlots()
-        {
-            if (_slots.Count == 0) return;
-            ValidateBaselineCoverage(_slots, _baselineByIndex);
-
-            var currency = _slots[0].CurrencyCode;
-
-            // BASE = listedeki en küçük ÖDENEBİLİR tutar (replacement sonrası)
-            var baseUnit = _slots.Where(s => s.IsDispensible)
-                                 .Select(s => s.Amount)
-                                 .DefaultIfEmpty(0m)
-                                 .Min();
-            if (baseUnit <= 0m) return;
-
-            var used   = new HashSet<decimal>(_slots.Select(s => s.Amount));
-            var toFill = _slots.Where(s => !s.IsDispensible && string.IsNullOrEmpty(s.ReplacedIndex))
-                               .OrderBy(s => _baselineByIndex[s.Index])
-                               .ToList();
-            if (toFill.Count == 0) return;
-
-            // Sonsuz döngü riskine karşı makul üst sınır (400 deneme yeterli oluyor)
-            const int MaxTrials = 400;
-            var candidates = new List<decimal>(toFill.Count);
-
-            for (int k = 1; k <= MaxTrials && candidates.Count < toFill.Count; k++)
-            {
-                var cand = baseUnit * k;
-                if (used.Contains(cand)) continue;
-
-                if (DispensibilityManager.IsAmountDispensible(cand, currency))
-                    candidates.Add(cand);
-            }
-
-            int calcNo = 1;
-            foreach (var slot in toFill)
-            {
-                if (candidates.Count == 0) break;
-
-                var cand = candidates[0];
-                candidates.RemoveAt(0);
-
-                slot.Amount        = cand;
-                slot.AmountSource  = AmountSource.Calculated;
-                slot.ReplacedIndex = $"{_calcPrefix}{calcNo++}";
-                slot.IsDispensible = true;
-
-                used.Add(cand);
-            }
-        }
-    }
-}
 
 ```
 
 -----------------daasdsadE-----------------------------
 ```c#
-// predefined: List<PredefinedAmount>
-var items = predefined.Select(p => new {
-    p.Index,
-    p.CurrencyCode,
-    p.Amount,
-    p.IsDispensible,
-    AmountSource = p.AmountSource.ToString() // "Predefined" vb.
-}).ToList();
+html,body{margin:0;padding:0;background:#f5f7fa;font-family:"Segoe UI",Arial,sans-serif}
 
-var json = System.Text.Json.JsonSerializer.Serialize(new { items });
+#bp-panel{
+  position:relative;width:1024px;margin:24px auto;padding:28px;
+  background:#fff;border-radius:18px;box-shadow:0 6px 22px rgba(0,0,0,.06);overflow:hidden;
+}
 
-await webView2.EnsureCoreWebView2Async();
+#bp-lottie{position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:0}
 
-// Sayfa yüklendikten (NavigationCompleted) sonra:
-await webView2.CoreWebView2.ExecuteScriptAsync($@"
-  window.fastCashData = {json};
-  if (window.initializeButtons) initializeButtons();
-");
+#bp-buttons{position:relative;z-index:1;text-align:center;font-size:0}
+.bp-cell{display:inline-block;vertical-align:top;width:300px;margin:12px;font-size:16px}
 
-// (Alternatif: açık sayfada güncellemek için)
-var msg = new { type="fastcashUpdate", payload=new { items } };
-webView2.CoreWebView2.PostWebMessageAsJson(System.Text.Json.JsonSerializer.Serialize(msg));
+.bp-btn{
+  display:block;width:100%;height:90px;line-height:90px;text-align:center;
+  border-radius:14px;border:1px solid #e3e8ee;background:#f9fafb;color:#1f2a37;font-size:28px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65),0 8px 24px rgba(16,24,40,.06);
+  cursor:pointer;outline:none;
+}
+.bp-btn:disabled{opacity:.35;cursor:not-allowed}
+.bp-btn.is-pressed{
+  background:#eaf2ff;border-color:#6fa6ff;color:#0f2a4a;
+  box-shadow:inset 0 0 0 2px rgba(111,166,255,.45),0 10px 28px rgba(16,24,40,.10);
+}
+
+.bp-curr{font-weight:600;margin-right:8px}
+
 
 ```
 ------------------ttt 2-----------------------------
 ```c#
 
-// Semboller (gerekirse genişlet)
-const SYMBOLS = { AED:'Đ', TRY:'₺', USD:'$', EUR:'€' };
-const fmt = n => Number(n).toLocaleString('en-US',{maximumFractionDigits:0});
+// ----- semboller & format (ES5) -----
+var BP_SYMBOLS = { 'AED':'Đ', 'TRY':'₺', 'USD':'$', 'EUR':'€' };
+function bpFormatAmount(n){ var s = Math.floor(Number(n)||0).toString(); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
-/**
- * C# sayfa yüklenmeden önce (veya sonra) şunu enjekte edecek:
- * window.fastCashData = {
- *   items: [
- *     { Index:"pre_1", CurrencyCode:"AED", Amount:100,  IsDispensible:true,  AmountSource:"Predefined" },
- *     { Index:"pre_2", CurrencyCode:"AED", Amount:200,  IsDispensible:true,  AmountSource:"Predefined" },
- *     ... toplam 6 kayıt ...
- *   ]
- * }
- */
-
-function initializeButtons(){
-  initLottieRing();
-
-  const items = (window.fastCashData && Array.isArray(window.fastCashData.items))
-    ? window.fastCashData.items
-    : []; // boşsa hiç buton çizme
-
-  const host = document.getElementById('buttons');
-  host.innerHTML = '';
-
-  items.forEach(item => addButton(host, item));
-}
-
-function addButton(container, item){
-  const btn = document.createElement('button');
-  btn.className = 'fast-btn';
-  btn.disabled = !item.IsDispensible;
-
-  const sym = SYMBOLS[item.CurrencyCode] || item.CurrencyCode;
-  btn.innerHTML = `<span class="currency">${sym}</span>${fmt(item.Amount)}`;
-
-  // Her buton kendi onclick'i ile C#'a 5 alanı yollar
-  btn.onclick = () => onButtonClick(
-    item.Index, item.CurrencyCode, item.Amount, !!item.IsDispensible, item.AmountSource || 'Predefined'
-  );
-
-  container.appendChild(btn);
-}
-
-/* Lottie: paneli saran ring/çerçeve */
-function initLottieRing(){
-  try{
+// ----- tek entry point -----
+var ButtonsUI = {
+  initialize: function () {
+    // Lottie varsa kullan; yoksa dosyayı include etme
     lottie.loadAnimation({
-      container: document.getElementById('lottie-ring'),
+      container: document.getElementById('bp-lottie'),
       renderer: 'svg',
       loop: true,
       autoplay: true,
-      path: 'lotties/ring.json'  // kendi Lottie dosya yolunu ver
+      path: 'lotties/ring.json'
     });
-  }catch{}
-}
 
-/* C# köprüsü: HostObject varsa onu, yoksa WebMessage kullan */
-function onButtonClick(index, currency, amount, isDispensible, amountSource){
-  // HostObject: window.bridge.OnPredefinedClicked(index, amount, currency, isDispensible, amountSource)
-  try{
-    if (window.bridge?.OnPredefinedClicked) {
-      window.bridge.OnPredefinedClicked(index, amount, currency, isDispensible, String(amountSource));
-      return;
+    var host = document.getElementById('bp-buttons');
+    host.innerHTML = '';
+
+    // C# HtmlBridge: GetAmounts() -> { items:[ {Index,CurrencyCode,Amount,IsDispensible,AmountSource} ] }
+    var data = window.external.GetAmounts();
+    var items = data.items;
+
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+
+      var cell = document.createElement('div');
+      cell.className = 'bp-cell';
+
+      var btn = document.createElement('button');
+      btn.className = 'bp-btn';
+      if (!it.IsDispensible) btn.disabled = true;
+
+      var sym = BP_SYMBOLS[it.CurrencyCode] || it.CurrencyCode;
+      btn.innerHTML = '<span class="bp-curr">'+ sym +'</span>' + bpFormatAmount(it.Amount);
+
+      btn.onclick = (function(item, b){
+        return function(){
+          b.className += ' is-pressed';
+          setTimeout(function(){ b.className = b.className.replace(' is-pressed',''); }, 140);
+
+          // C# HtmlBridge: OnAmountClicked(index, currency, amount, isDispensible, amountSource)
+          window.external.OnAmountClicked(item.Index, item.CurrencyCode, item.Amount, item.IsDispensible, item.AmountSource);
+        };
+      })(it, btn);
+
+      cell.appendChild(btn);
+      host.appendChild(cell);
     }
-  }catch{}
-
-  // WebMessage fallback
-  if (window.chrome?.webview){
-    window.chrome.webview.postMessage({
-      type: 'predefinedClicked',
-      data: { Index:index, CurrencyCode:currency, Amount:amount, IsDispensible:isDispensible, AmountSource:String(amountSource) }
-    });
   }
-}
-
-/* (Opsiyonel) C# sonradan güncellerse */
-try{
-  window.chrome?.webview?.addEventListener('message', e=>{
-    if (e.data?.type === 'fastcashUpdate'){
-      window.fastCashData = e.data.payload;   // { items:[...] }
-      initializeButtons();
-    }
-  });
-}catch{}
+};
 
 
 ```
 ------------------ttt 1-----------------------------
 ```css
-html,body{margin:0;padding:0;background:#fdfdfd;font-family:"Segoe UI",Arial,sans-serif;user-select:none}
-
-#panel{
-  position:relative;
-  padding:28px;
-  border-radius:18px;
-  background:#fff;
-  box-shadow:0 6px 22px rgba(0,0,0,.06);
-  overflow:hidden;
-  width:1024px;              /* gerekirse kaldır/uyarla */
-  margin:24px auto;
+[ComVisible(true)]
+[ClassInterface(ClassInterfaceType.AutoDual)]
+public class HtmlBridge
+{
+    public object GetAmounts() => new { items = /* List<...> map */ };
+    public void OnAmountClicked(string index, string currency, object amount, bool isDispensible, string amountSource)
+    {
+        var amt = Convert.ToDecimal(amount); // IE'de decimal/double gelebilir
+        // .. senin akışın ..
+    }
 }
 
-/* Lottie tüm paneli sarar; tıklamayı engellemesin */
-#lottie-ring{position:absolute;inset:0;pointer-events:none;z-index:0}
-
-/* 6’lı grid (2 satır x 3 sütun) */
-#buttons{
-  position:relative; z-index:1;
-  display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
-}
-
-.fast-btn{
-  height:90px; border-radius:12px; border:1px solid #dfe4ea; background:#f9fafb;
-  font-size:26px; color:#1b2b3a; box-shadow:0 2px 6px rgba(0,0,0,.08);
-  cursor:pointer; transition:all .1s;
-}
-.fast-btn:active{transform:scale(.97); background:#eef1f4}
-.fast-btn:disabled{opacity:.35; cursor:not-allowed}
-
-.currency{font-weight:600; margin-right:6px}
 
 ```
 -----------------------------------------------
 ```Html
 
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Fast Cash Buttons</title>
-  <link rel="stylesheet" href="css/fastcash.css" />
-  <script src="js/lottie.min.js"></script>
-  <script src="js/fastcash.js"></script>
-</head>
-<body onload="initializeButtons()">
-  <!-- Sadece panel + butonlar -->
-  <section id="panel">
-    <div id="lottie-ring" aria-hidden="true"></div>  <!-- Lottie arka plan -->
-    <div id="buttons"></div>                          <!-- 6’lı grid -->
-  </section>
-</body>
-</html>
+
 
 
 
