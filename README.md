@@ -3471,8 +3471,208 @@ namespace Spinner
 
 ```
 -------------------M3---------------
+<Window x:Class="Spinner.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Spinner"
+        mc:Ignorable="d"
+        Loaded="Window_Loaded"
+        Background="White"
+        Title="MainWindow"   Height="350" Width="525"
+       
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <!-- ÖNDEKİ YILAN İÇİN GRADIENT
+             Uçlar: beyazımsı, Ortası: #17B2E6 (açık mavi) -->
+        <LinearGradientBrush x:Key="SnakeStrokeBrush"
+                     StartPoint="0,0" EndPoint="1,0"
+                     MappingMode="RelativeToBoundingBox">
+            <!-- Kuyruk: neredeyse beyaz, çok hafif mavi -->
+            <GradientStop Color="#E8F8FF" Offset="0.0"/>
+
+            <!-- Kuyruğun ortası: açık mavi -->
+            <GradientStop Color="#FF7FD4F3" Offset="0.25"/>
+
+            <!-- BAŞ: en parlak mavi -->
+            <GradientStop Color="#FF17B2E6" Offset="0.55"/>
+
+            <!-- Başın hemen sonrası: tekrar açılmaya başlasın -->
+            <GradientStop Color="#E8F8FF" Offset="1.0"/>
+        </LinearGradientBrush>
+
+
+        <!-- ARKADAKİ İNCE MAVİ ÇERÇEVE İÇİN PULSE ANİMASYONU -->
+        <Storyboard x:Key="BaseBorderPulse" RepeatBehavior="Forever">
+            <ColorAnimationUsingKeyFrames
+                Storyboard.TargetName="BaseBorder"
+                Storyboard.TargetProperty="(Shape.Stroke).(SolidColorBrush.Color)">
+                <LinearColorKeyFrame Value="#6017B2E6" KeyTime="0:0:0"/>
+                <LinearColorKeyFrame Value="#80FFFFFF" KeyTime="0:0:3"/>
+                <LinearColorKeyFrame Value="#6017B2E6" KeyTime="0:0:6"/>
+            </ColorAnimationUsingKeyFrames>
+        </Storyboard>
+    </Window.Resources>
+
+    <Window.Triggers>
+        <!-- Pencere açılınca arkadaki çerçeve nabız gibi renk değişsin -->
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource BaseBorderPulse}"/>
+        </EventTrigger>
+    </Window.Triggers>
+
+    <Grid Background="White">
+        <Canvas x:Name="RootCanvas" Margin="40">
+
+            <!-- ARKADAKİ İNCE, YUMUŞAK KÖŞELİ MAVİ ÇERÇEVE -->
+            <Rectangle x:Name="BaseBorder"
+                       StrokeThickness="1.5"
+                       RadiusX="26" RadiusY="26"
+                       Fill="Transparent">
+                <Rectangle.Stroke>
+                    <SolidColorBrush Color="#6017B2E6"/>
+                </Rectangle.Stroke>
+            </Rectangle>
+
+            <!-- ÖNDE DÖNEN YILAN ÇİZGİ (aynı geometri, daha kalın, gradientli) -->
+            <Rectangle x:Name="SnakeRect"
+                       StrokeThickness="3"
+                       RadiusX="26" RadiusY="26"
+                       StrokeDashCap="Round"
+                       StrokeLineJoin="Round"
+                       Fill="Transparent"
+                       Stroke="{StaticResource SnakeStrokeBrush}"/>
+        </Canvas>
+    </Grid>
+</Window>
 
 ```
 -------------------M3---------------
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace Spinner
+{
+    public partial class MainWindow : Window
+    {
+        // Kaçta kaçı dolu olsun? (0.75 = çevrenin %75'i yılan, %25'i boş)
+        private const double SnakeFraction = 0.60;
+        // Bir tam tur kaç saniyede dönsün?
+        private const double PeriodSeconds = 10.0;
+
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            SetupSnakeGeometry();
+            RootCanvas.SizeChanged += (_, __) => SetupSnakeGeometry();
+        }
+
+        private void SetupSnakeGeometry()
+        {
+            double canvasW = RootCanvas.ActualWidth;
+            double canvasH = RootCanvas.ActualHeight;
+            if (canvasW <= 0 || canvasH <= 0)
+                return;
+
+            // Dikdörtgeni "enine uzun" ve ortalanmış yapalım
+            double rectWidth = canvasW;
+            double rectHeight = canvasH * 0.6;
+
+            // BaseBorder konumu
+            BaseBorder.Width = rectWidth;
+            BaseBorder.Height = rectHeight;
+            Canvas.SetLeft(BaseBorder, 0);
+            Canvas.SetTop(BaseBorder, (canvasH - rectHeight) / 2);
+
+            // SnakeRect aynı geometriyi kullansın
+            SnakeRect.Width = rectWidth;
+            SnakeRect.Height = rectHeight;
+            Canvas.SetLeft(SnakeRect, 0);
+            Canvas.SetTop(SnakeRect, (canvasH - rectHeight) / 2);
+
+            // Layout'u güncelle ki RenderedGeometry hazır olsun
+            SnakeRect.UpdateLayout();
+
+            // Yuvarlatılmış dikdörtgenin gerçek path uzunluğunu hesapla
+            double perimeter = GetPerimeter(SnakeRect);
+            if (perimeter <= 0)
+                return;
+
+            double visible = perimeter * SnakeFraction;
+            double gap = perimeter - visible;
+
+            // Tek uzun yılan + bir boşluk
+            SnakeRect.StrokeDashArray = new DoubleCollection { visible, gap };
+
+            // Eski animasyonu temizle
+            SnakeRect.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+
+            // 0 -> -perimeter arası kaydır: tek yönde dönen yılan
+            var anim = new DoubleAnimation
+            {
+                From = 0,
+                To = -perimeter,
+                Duration = TimeSpan.FromSeconds(PeriodSeconds),
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+
+            SnakeRect.BeginAnimation(Shape.StrokeDashOffsetProperty, anim);
+        }
+
+        /// <summary>
+        /// Yuvarlatılmış dikdörtgenin (Rectangle) stroke yolunun yaklaşık uzunluğu
+        /// için flattened geometry kullanıyoruz.
+        /// </summary>
+        private double GetPerimeter(Rectangle rect)
+        {
+            var geom = rect.RenderedGeometry;
+            if (geom == null)
+                return 0;
+
+            var flat = geom.GetFlattenedPathGeometry();
+            double length = 0;
+
+            foreach (var fig in flat.Figures)
+            {
+                Point last = fig.StartPoint;
+                foreach (var seg in fig.Segments.OfType<PolyLineSegment>())
+                {
+                    foreach (var pt in seg.Points)
+                    {
+                        length += Distance(last, pt);
+                        last = pt;
+                    }
+                }
+            }
+
+            return length;
+        }
+
+        private static double Distance(Point a, Point b)
+        {
+            double dx = a.X - b.X;
+            double dy = a.Y - b.Y;
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+    }
+}
 
 ```
