@@ -2938,80 +2938,68 @@ var ButtonsUI = {
 ```
 ------------------ttt 1-----------------------------
 ```css
-[ComVisible(true)]
-[ClassInterface(ClassInterfaceType.AutoDual)]
-public class HtmlBridge
-{
-    public object GetAmounts() => new { items = /* List<...> map */ };
-    public void OnAmountClicked(string index, string currency, object amount, bool isDispensible, string amountSource)
-    {
-        var amt = Convert.ToDecimal(amount); // IE'de decimal/double gelebilir
-        // .. senin akışın ..
-    }
-}
+<Grid Width="250" Height="250">
+
+    <Grid.Resources>
+        <!-- Dönen halka için storyboard -->
+        <Storyboard x:Key="RingRotateStoryboard" RepeatBehavior="Forever">
+            <DoubleAnimation
+                Storyboard.TargetName="RingEllipse"
+                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                From="0"
+                To="360"
+                Duration="0:0:4"
+                RepeatBehavior="Forever" />
+        </Storyboard>
+    </Grid.Resources>
+
+    <!-- Dönen halka -->
+    <Ellipse x:Name="RingEllipse"
+             Width="250"
+             Height="250"
+             StrokeThickness="6"
+             StrokeStartLineCap="Round"
+             StrokeEndLineCap="Round"
+             RenderTransformOrigin="0.5,0.5">
+        
+        <!-- Renk / gradient -->
+        <Ellipse.Stroke>
+            <RadialGradientBrush>
+                <GradientStop Color="#66FFFFFF" Offset="0.0"/>
+                <GradientStop Color="#CC00FFFF" Offset="1.0"/>
+            </RadialGradientBrush>
+        </Ellipse.Stroke>
+
+        <!-- Halka parçalı dursun diye -->
+        <Ellipse.StrokeDashArray>2 4</Ellipse.StrokeDashArray>
+
+        <!-- Göze hoş gelen glow için -->
+        <Ellipse.Effect>
+            <DropShadowEffect BlurRadius="20"
+                              Color="Cyan"
+                              ShadowDepth="0"
+                              Opacity="0.8"/>
+        </Ellipse.Effect>
+
+        <!-- Dönme transformu -->
+        <Ellipse.RenderTransform>
+            <RotateTransform Angle="0"/>
+        </Ellipse.RenderTransform>
+    </Ellipse>
+
+    <!-- Loaded olduğunda animasyonu başlat -->
+    <Grid.Triggers>
+        <EventTrigger RoutedEvent="Loaded">
+            <BeginStoryboard Storyboard="{StaticResource RingRotateStoryboard}"/>
+        </EventTrigger>
+    </Grid.Triggers>
+</Grid>
 
 
 ```
 -----------------------------------------------
 ```Html
-  public static class WebBrowserHelper
-    {
-        private static bool _isInitialized = false;
 
-        /// <summary>
-        /// WebBrowser oluşturmadan ÖNCE çağırın
-        /// </summary>
-        public static void EnableModernMode()
-        {
-            if (_isInitialized) return;
-            
-            try
-            {
-                var fileName = Path.GetFileName(Process.GetCurrentProcess().MainModule.FileName);
-                SetBrowserFeatureControlKey("FEATURE_BROWSER_EMULATION", fileName, GetBrowserEmulationMode());
-                SetBrowserFeatureControlKey("FEATURE_AJAX_CONNECTIONEVENTS", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_ENABLE_CLIPCHILDREN_OPTIMIZATION", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_MANAGE_SCRIPT_CIRCULAR_REFS", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_DOMSTORAGE", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_GPU_RENDERING", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_IVIEWOBJECTDRAW_DMLT9_WITH_GDI", fileName, 0);
-                SetBrowserFeatureControlKey("FEATURE_DISABLE_LEGACY_COMPRESSION", fileName, 1);
-                SetBrowserFeatureControlKey("FEATURE_LOCALMACHINE_LOCKDOWN", fileName, 0);
-                SetBrowserFeatureControlKey("FEATURE_BLOCK_LMZ_OBJECT", fileName, 0);
-                SetBrowserFeatureControlKey("FEATURE_BLOCK_LMZ_SCRIPT", fileName, 0);
-                
-                _isInitialized = true;
-            }
-            catch (Exception)
-            {
-                // Registry erişimi başarısız - sessiz kal
-            }
-        }
-
-        /// <summary>
-        /// WebBrowser oluştur ve döndür (IE11 modunda)
-        /// </summary>
-        public static WebBrowser CreateWebBrowser()
-        {
-            EnableModernMode();
-            return new WebBrowser();
-        }
-
-        private static void SetBrowserFeatureControlKey(string feature, string appName, uint value)
-        {
-            using (var key = Registry.CurrentUser.CreateSubKey(
-                $@"Software\Microsoft\Internet Explorer\Main\FeatureControl\{feature}",
-                RegistryKeyPermissionCheck.ReadWriteSubTree))
-            {
-                key?.SetValue(appName, value, RegistryValueKind.DWord);
-            }
-        }
-
-        private static uint GetBrowserEmulationMode()
-        {
-            return 11001; // IE11 Edge mode
-        }
-    }
 
 
 ```
