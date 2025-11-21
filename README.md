@@ -2936,225 +2936,339 @@ var ButtonsUI = {
 
 
 ```
-------------------ttt 1-----------------------------
+-----------------KOKOKOO----------------------
 ```css
-<Grid Width="250" Height="250">
+  public partial class MainWindow : Window
+  {
+      private double _perimeter;     // toplam çevre
+      private double _snakeLength;   // yılanın uzunluğu
+      private double _speed;         // birim/sn (başın hızı)
+      private double _headPos;       // [0, _perimeter)
+      private TimeSpan _lastRenderTime;
 
-    <Grid.Resources>
-        <!-- Dönen halka için storyboard -->
-        <Storyboard x:Key="RingRotateStoryboard" RepeatBehavior="Forever">
-            <DoubleAnimation
-                Storyboard.TargetName="RingEllipse"
-                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                From="0"
-                To="360"
-                Duration="0:0:4"
-                RepeatBehavior="Forever" />
-        </Storyboard>
-    </Grid.Resources>
+      public MainWindow()
+      {
+          InitializeComponent();
+      }
 
-    <!-- Dönen halka -->
-    <Ellipse x:Name="RingEllipse"
-             Width="250"
-             Height="250"
-             StrokeThickness="6"
-             StrokeStartLineCap="Round"
-             StrokeEndLineCap="Round"
-             RenderTransformOrigin="0.5,0.5">
-        
-        <!-- Renk / gradient -->
-        <Ellipse.Stroke>
-            <RadialGradientBrush>
-                <GradientStop Color="#66FFFFFF" Offset="0.0"/>
-                <GradientStop Color="#CC00FFFF" Offset="1.0"/>
-            </RadialGradientBrush>
-        </Ellipse.Stroke>
+      private void Window_Loaded(object sender, RoutedEventArgs e)
+      {
+          SetupGeometry();
+          BorderCanvas.SizeChanged += (_, __) => SetupGeometry();
+          CompositionTarget.Rendering += CompositionTarget_Rendering;
+      }
 
-        <!-- Halka parçalı dursun diye -->
-        <Ellipse.StrokeDashArray>2 4</Ellipse.StrokeDashArray>
+      private void SetupGeometry()
+      {
+          // Dikdörtgeni “dikdörtgenimsi” yapalım: enine uzun, boyuna kısa
+          double w = BorderCanvas.ActualWidth;
+          double h = BorderCanvas.ActualHeight;
 
-        <!-- Göze hoş gelen glow için -->
-        <Ellipse.Effect>
-            <DropShadowEffect BlurRadius="20"
-                              Color="Cyan"
-                              ShadowDepth="0"
-                              Opacity="0.8"/>
-        </Ellipse.Effect>
+          if (w <= 0 || h <= 0)
+              return;
 
-        <!-- Dönme transformu -->
-        <Ellipse.RenderTransform>
-            <RotateTransform Angle="0"/>
-        </Ellipse.RenderTransform>
-    </Ellipse>
+          // İçi biraz daha yatay olsun istersen oranla oynayabilirsin
+          double rectWidth = w;         // full genişlik
+          double rectHeight = h * 0.6;  // biraz daha basık olsun
 
-    <!-- Loaded olduğunda animasyonu başlat -->
-    <Grid.Triggers>
-        <EventTrigger RoutedEvent="Loaded">
-            <BeginStoryboard Storyboard="{StaticResource RingRotateStoryboard}"/>
-        </EventTrigger>
-    </Grid.Triggers>
-</Grid>
+          BorderRect.Width = rectWidth;
+          BorderRect.Height = rectHeight;
+          Canvas.SetLeft(BorderRect, 0);
+          Canvas.SetTop(BorderRect, (h - rectHeight) / 2); // ortala
 
+          // Çevre (parametre uzayı)
+          _perimeter = 2 * (rectWidth + rectHeight);
+
+          // Yılanın uzunluğu = çevrenin belli oranı (örn. 1/3)
+          double fraction = 0.33;        // 0.25, 0.5 vs deneyebilirsin
+          _snakeLength = _perimeter * fraction;
+
+          // Tam tur süresi (tek yönde, DAHA YAVAŞ: 10 sn)
+          double periodSeconds = 10.0;
+          _speed = _perimeter / periodSeconds;
+      }
+
+      private void CompositionTarget_Rendering(object sender, EventArgs e)
+      {
+          if (_perimeter <= 0 || _snakeLength <= 0)
+              return;
+
+          var args = (RenderingEventArgs)e;
+
+          if (_lastRenderTime == TimeSpan.Zero)
+          {
+              _lastRenderTime = args.RenderingTime;
+              return;
+          }
+
+          double dt = (args.RenderingTime - _lastRenderTime).TotalSeconds;
+          _lastRenderTime = args.RenderingTime;
+
+          // BAŞ her frame'de İLERİ gidiyor (tek yön, saat yönü)
+          _headPos += _speed * dt;
+          while (_headPos >= _perimeter)
+              _headPos -= _perimeter;
+
+          UpdateSegments();
+      }
+
+      private enum Side
+      {
+          Top,
+          Right,
+          Bottom,
+          Left
+      }
+
+      private void UpdateSegments()
+      {
+          double w = BorderRect.Width;
+          double h = BorderRect.Height;
+
+          if (w <= 0 || h <= 0)
+              return;
+
+          double tailPos = _headPos - _snakeLength;
+          if (tailPos < 0)
+              tailPos += _perimeter;
+
+          // Kenar aralıkları (parametre uzayı: saat yönü)
+          double sTop = 0;
+          double eTop = sTop + w;
+
+          double sRight = eTop;
+          double eRight = sRight + h;
+
+          double sBottom = eRight;
+          double eBottom = sBottom + w;
+
+          double sLeft = eBottom;
+          double eLeft = sLeft + h; // = _perimeter
+
+          // Her kenar için max 2 parça (wrap olursa)
+          UpdateSide(TopSeg1, TopSeg2, Side.Top, sTop, eTop, tailPos, _headPos, w, h);
+          UpdateSide(RightSeg1, RightSeg2, Side.Right, sRight, eRight, tailPos, _headPos, w, h);
+          UpdateSide(BottomSeg1, BottomSeg2, Side.Bottom, sBottom, eBottom, tailPos, _headPos, w, h);
+          UpdateSide(LeftSeg1, LeftSeg2, Side.Left, sLeft, eLeft, tailPos, _headPos, w, h);
+      }
+
+      private void UpdateSide(Rectangle seg1,
+                              Rectangle seg2,
+                              Side side,
+                              double sideStart,
+                              double sideEnd,
+                              double tail,
+                              double head,
+                              double w,
+                              double h)
+      {
+          var segments = GetSegmentsOnSide(sideStart, sideEnd, tail, head, _perimeter);
+
+          seg1.Visibility = Visibility.Collapsed;
+          seg2.Visibility = Visibility.Collapsed;
+
+          if (segments.Count >= 1)
+          {
+              ApplySegmentToRectangle(seg1, side, sideStart, segments[0].start, segments[0].length, w, h);
+              seg1.Visibility = Visibility.Visible;
+          }
+
+          if (segments.Count >= 2)
+          {
+              ApplySegmentToRectangle(seg2, side, sideStart, segments[1].start, segments[1].length, w, h);
+              seg2.Visibility = Visibility.Visible;
+          }
+      }
+
+      private void ApplySegmentToRectangle(Rectangle rect,
+                                           Side side,
+                                           double sideStart,
+                                           double segStart,
+                                           double segLen,
+                                           double w,
+                                           double h)
+      {
+          if (segLen <= 0.01)
+          {
+              rect.Visibility = Visibility.Collapsed;
+              return;
+          }
+
+          const double thickness = 4.0;
+
+          switch (side)
+          {
+              case Side.Top:
+                  rect.Height = thickness;
+                  rect.Width = segLen;
+                  Canvas.SetTop(rect, Canvas.GetTop(BorderRect) - thickness / 2);
+                  Canvas.SetLeft(rect, segStart - sideStart);
+                  break;
+
+              case Side.Right:
+                  rect.Width = thickness;
+                  rect.Height = segLen;
+                  Canvas.SetLeft(rect, w - thickness / 2);
+                  Canvas.SetTop(rect, Canvas.GetTop(BorderRect) + (segStart - sideStart));
+                  break;
+
+              case Side.Bottom:
+                  rect.Height = thickness;
+                  rect.Width = segLen;
+                  {
+                      double localStart = segStart - sideStart; // 0..w
+                      double x = w - localStart - segLen;
+                      Canvas.SetLeft(rect, x);
+                      Canvas.SetTop(rect, Canvas.GetTop(BorderRect) + h - thickness / 2);
+                  }
+                  break;
+
+              case Side.Left:
+                  rect.Width = thickness;
+                  rect.Height = segLen;
+                  {
+                      double localStart = segStart - sideStart; // 0..h
+                      double y = h - localStart - segLen;
+                      Canvas.SetLeft(rect, -thickness / 2);
+                      Canvas.SetTop(rect, Canvas.GetTop(BorderRect) + y);
+                  }
+                  break;
+          }
+      }
+
+      private static List<(double start, double length)> GetSegmentsOnSide(
+          double sideStart,
+          double sideEnd,
+          double tail,
+          double head,
+          double perimeter)
+      {
+          var result = new List<(double start, double length)>();
+
+          bool Intersect(double a1, double a2, double b1, double b2,
+                                out double s, out double e)
+          {
+              s = Math.Max(a1, b1);
+              e = Math.Min(a2, b2);
+              return e > s;
+          }
+
+          if (tail <= head)
+          {
+              // Tek aralık: [tail, head]
+              if (Intersect(tail, head, sideStart, sideEnd, out double s, out double e))
+                  result.Add((s, e - s));
+          }
+          else
+          {
+              // Wrap: [tail, P) ∪ [0, head]
+              if (Intersect(tail, perimeter, sideStart, sideEnd, out double s1, out double e1))
+                  result.Add((s1, e1 - s1));
+
+              if (Intersect(0, head, sideStart, sideEnd, out double s2, out double e2))
+                  result.Add((s2, e2 - s2));
+          }
+
+          return result;
+      }
+  }
 
 ```
------------------------------------------------
+-------------------KOKOKOK---------------
 ```Html
+<Window x:Class="Spinner.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Spinner"
+        mc:Ignorable="d"
+        Loaded="Window_Loaded"
+        Background="White"
+        Title="MainWindow"   Height="350" Width="525"
+       
+        WindowStartupLocation="CenterScreen">
+    <!-- RENK TANIMLARI -->
+    <Window.Resources>
+        <!-- YATAY kenarlardaki yılan için gradient:
+             UÇLAR beyazımsı, ORTASI #17B2E6 (açık mavi) -->
+        <LinearGradientBrush x:Key="SnakeGradientHorizontal"
+                             StartPoint="0,0" EndPoint="1,0"
+                             MappingMode="RelativeToBoundingBox">
+            <!-- Sol uç: beyazımsı -->
+            <GradientStop Color="#F0FFFFFF" Offset="0.0"/>
+            <!-- Maviye geçiş -->
+            <GradientStop Color="#FF17B2E6" Offset="0.35"/>
+            <!-- Ortası full mavi -->
+            <GradientStop Color="#FF17B2E6" Offset="0.65"/>
+            <!-- Sağ uç: beyazımsı -->
+            <GradientStop Color="#F0FFFFFF" Offset="1.0"/>
+        </LinearGradientBrush>
 
-<UserControl x:Class="YourNamespace.AnimatedFrameEffect"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Width="300" Height="300">
+        <!-- DİKEY kenarlardaki yılan için aynı palet, dikey yön -->
+        <LinearGradientBrush x:Key="SnakeGradientVertical"
+                             StartPoint="0,0" EndPoint="0,1"
+                             MappingMode="RelativeToBoundingBox">
+            <GradientStop Color="#F0FFFFFF" Offset="0.0"/>
+            <GradientStop Color="#FF17B2E6" Offset="0.35"/>
+            <GradientStop Color="#FF17B2E6" Offset="0.65"/>
+            <GradientStop Color="#F0FFFFFF" Offset="1.0"/>
+        </LinearGradientBrush>
+    </Window.Resources>
 
-    <UserControl.Resources>
-        <!-- Tüm animasyonları başlatan storyboard -->
-        <Storyboard x:Key="FrameAnimationStoryboard" RepeatBehavior="Forever">
+    <Grid Background="White">
+        <Canvas x:Name="BorderCanvas" Margin="40">
 
-            <!-- Dış halka saat yönünde dönsün -->
-            <DoubleAnimation
-                Storyboard.TargetName="OuterRing"
-                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                From="0" To="360"
-                Duration="0:0:3"
-                RepeatBehavior="Forever" />
+            <!-- HAFİF BEYAZ, YUMUŞAK KÖŞELİ ÇERÇEVE -->
+            <Rectangle x:Name="BorderRect"
+                       Stroke="#40FFFFFF"
+                       StrokeThickness="2"
+                       RadiusX="18" RadiusY="18"
+                       Fill="Transparent" />
 
-            <!-- İç halka ters yöne dönsün -->
-            <DoubleAnimation
-                Storyboard.TargetName="InnerRing"
-                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                From="360" To="0"
-                Duration="0:0:4"
-                RepeatBehavior="Forever" />
+            <!-- ÜST (yatay) – yılanın bu kenardaki parçaları -->
+            <Rectangle x:Name="TopSeg1"
+                       Height="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientHorizontal}" />
+            <Rectangle x:Name="TopSeg2"
+                       Height="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientHorizontal}" />
 
-            <!-- Ortadaki glow/pulse da hafif büyüyüp küçülsün -->
-            <DoubleAnimation
-                Storyboard.TargetName="PulseCircle"
-                Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                From="1.0" To="1.08"
-                AutoReverse="True"
-                Duration="0:0:1.2"
-                RepeatBehavior="Forever" />
+            <!-- SAĞ (dikey) -->
+            <Rectangle x:Name="RightSeg1"
+                       Width="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientVertical}" />
+            <Rectangle x:Name="RightSeg2"
+                       Width="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientVertical}" />
 
-            <DoubleAnimation
-                Storyboard.TargetName="PulseCircle"
-                Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                From="1.0" To="1.08"
-                AutoReverse="True"
-                Duration="0:0:1.2"
-                RepeatBehavior="Forever" />
+            <!-- ALT (yatay) -->
+            <Rectangle x:Name="BottomSeg1"
+                       Height="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientHorizontal}" />
+            <Rectangle x:Name="BottomSeg2"
+                       Height="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientHorizontal}" />
 
-            <DoubleAnimation
-                Storyboard.TargetName="PulseCircle"
-                Storyboard.TargetProperty="Opacity"
-                From="0.5" To="1.0"
-                AutoReverse="True"
-                Duration="0:0:1.2"
-                RepeatBehavior="Forever" />
+            <!-- SOL (dikey) -->
+            <Rectangle x:Name="LeftSeg1"
+                       Width="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientVertical}" />
+            <Rectangle x:Name="LeftSeg2"
+                       Width="3"
+                       RadiusX="2" RadiusY="2"
+                       Fill="{StaticResource SnakeGradientVertical}" />
 
-        </Storyboard>
-    </UserControl.Resources>
-
-    <Grid Background="Transparent">
-        <Grid HorizontalAlignment="Center"
-              VerticalAlignment="Center"
-              Width="260"
-              Height="260">
-
-            <!-- Hafif arka plan glow (çok hafif) -->
-            <Ellipse Width="230" Height="230"
-                     Opacity="0.18">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#0000FFFF" Offset="0.0"/>
-                        <GradientStop Color="#00002244" Offset="1.0"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.Effect>
-                    <BlurEffect Radius="20"/>
-                </Ellipse.Effect>
-            </Ellipse>
-
-            <!-- Pulse yapan iç dolu daire -->
-            <Ellipse x:Name="PulseCircle"
-                     Width="180"
-                     Height="180"
-                     Opacity="0.6"
-                     RenderTransformOrigin="0.5,0.5">
-                <Ellipse.Fill>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#2200FFFF" Offset="0.0"/>
-                        <GradientStop Color="#00000000" Offset="1.0"/>
-                    </RadialGradientBrush>
-                </Ellipse.Fill>
-                <Ellipse.RenderTransform>
-                    <ScaleTransform ScaleX="1" ScaleY="1"/>
-                </Ellipse.RenderTransform>
-            </Ellipse>
-
-            <!-- Dış dönen halka -->
-            <Ellipse x:Name="OuterRing"
-                     Width="250"
-                     Height="250"
-                     StrokeThickness="5"
-                     RenderTransformOrigin="0.5,0.5"
-                     StrokeStartLineCap="Round"
-                     StrokeEndLineCap="Round"
-                     StrokeDashArray="3 5">
-
-                <Ellipse.Stroke>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#66FFFFFF" Offset="0.0"/>
-                        <GradientStop Color="#CC00FFFF" Offset="1.0"/>
-                    </RadialGradientBrush>
-                </Ellipse.Stroke>
-
-                <Ellipse.Effect>
-                    <DropShadowEffect BlurRadius="15"
-                                      Color="Cyan"
-                                      ShadowDepth="0"
-                                      Opacity="0.9"/>
-                </Ellipse.Effect>
-
-                <Ellipse.RenderTransform>
-                    <RotateTransform Angle="0"/>
-                </Ellipse.RenderTransform>
-            </Ellipse>
-
-            <!-- İç, biraz daha ince halka (ters yöne dönen) -->
-            <Ellipse x:Name="InnerRing"
-                     Width="210"
-                     Height="210"
-                     StrokeThickness="3"
-                     RenderTransformOrigin="0.5,0.5"
-                     StrokeStartLineCap="Round"
-                     StrokeEndLineCap="Round"
-                     StrokeDashArray="1 4">
-
-                <Ellipse.Stroke>
-                    <RadialGradientBrush>
-                        <GradientStop Color="#88FFFFFF" Offset="0.0"/>
-                        <GradientStop Color="#8800FFFF" Offset="1.0"/>
-                    </RadialGradientBrush>
-                </Ellipse.Stroke>
-
-                <Ellipse.RenderTransform>
-                    <RotateTransform Angle="0"/>
-                </Ellipse.RenderTransform>
-            </Ellipse>
-
-            <!-- Ortaya sonra butonları koyacağın alan (şu an boş) -->
-            <!--<Grid Width="160" Height="160">
-                ...
-            </Grid>-->
-        </Grid>
+        </Canvas>
     </Grid>
-
-    <!-- UserControl yüklendiğinde animasyonları başlat -->
-    <UserControl.Triggers>
-        <EventTrigger RoutedEvent="Loaded">
-            <BeginStoryboard Storyboard="{StaticResource FrameAnimationStoryboard}" />
-        </EventTrigger>
-    </UserControl.Triggers>
-</UserControl>
+</Window>
 
 
 ```
