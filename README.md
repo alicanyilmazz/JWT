@@ -3681,8 +3681,9 @@ namespace Spinner
 }
 
 ```
-```SQL
 -------------------FINAL---------------
+```SQL
+
 <Window x:Class="Spinner.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
