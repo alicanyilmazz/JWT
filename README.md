@@ -3000,6 +3000,161 @@ var ButtonsUI = {
 -----------------------------------------------
 ```Html
 
+<UserControl x:Class="YourNamespace.AnimatedFrameEffect"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="300" Height="300">
+
+    <UserControl.Resources>
+        <!-- Tüm animasyonları başlatan storyboard -->
+        <Storyboard x:Key="FrameAnimationStoryboard" RepeatBehavior="Forever">
+
+            <!-- Dış halka saat yönünde dönsün -->
+            <DoubleAnimation
+                Storyboard.TargetName="OuterRing"
+                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                From="0" To="360"
+                Duration="0:0:3"
+                RepeatBehavior="Forever" />
+
+            <!-- İç halka ters yöne dönsün -->
+            <DoubleAnimation
+                Storyboard.TargetName="InnerRing"
+                Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                From="360" To="0"
+                Duration="0:0:4"
+                RepeatBehavior="Forever" />
+
+            <!-- Ortadaki glow/pulse da hafif büyüyüp küçülsün -->
+            <DoubleAnimation
+                Storyboard.TargetName="PulseCircle"
+                Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                From="1.0" To="1.08"
+                AutoReverse="True"
+                Duration="0:0:1.2"
+                RepeatBehavior="Forever" />
+
+            <DoubleAnimation
+                Storyboard.TargetName="PulseCircle"
+                Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                From="1.0" To="1.08"
+                AutoReverse="True"
+                Duration="0:0:1.2"
+                RepeatBehavior="Forever" />
+
+            <DoubleAnimation
+                Storyboard.TargetName="PulseCircle"
+                Storyboard.TargetProperty="Opacity"
+                From="0.5" To="1.0"
+                AutoReverse="True"
+                Duration="0:0:1.2"
+                RepeatBehavior="Forever" />
+
+        </Storyboard>
+    </UserControl.Resources>
+
+    <Grid Background="Transparent">
+        <Grid HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="260"
+              Height="260">
+
+            <!-- Hafif arka plan glow (çok hafif) -->
+            <Ellipse Width="230" Height="230"
+                     Opacity="0.18">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#0000FFFF" Offset="0.0"/>
+                        <GradientStop Color="#00002244" Offset="1.0"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.Effect>
+                    <BlurEffect Radius="20"/>
+                </Ellipse.Effect>
+            </Ellipse>
+
+            <!-- Pulse yapan iç dolu daire -->
+            <Ellipse x:Name="PulseCircle"
+                     Width="180"
+                     Height="180"
+                     Opacity="0.6"
+                     RenderTransformOrigin="0.5,0.5">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#2200FFFF" Offset="0.0"/>
+                        <GradientStop Color="#00000000" Offset="1.0"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+                <Ellipse.RenderTransform>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- Dış dönen halka -->
+            <Ellipse x:Name="OuterRing"
+                     Width="250"
+                     Height="250"
+                     StrokeThickness="5"
+                     RenderTransformOrigin="0.5,0.5"
+                     StrokeStartLineCap="Round"
+                     StrokeEndLineCap="Round"
+                     StrokeDashArray="3 5">
+
+                <Ellipse.Stroke>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#66FFFFFF" Offset="0.0"/>
+                        <GradientStop Color="#CC00FFFF" Offset="1.0"/>
+                    </RadialGradientBrush>
+                </Ellipse.Stroke>
+
+                <Ellipse.Effect>
+                    <DropShadowEffect BlurRadius="15"
+                                      Color="Cyan"
+                                      ShadowDepth="0"
+                                      Opacity="0.9"/>
+                </Ellipse.Effect>
+
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="0"/>
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- İç, biraz daha ince halka (ters yöne dönen) -->
+            <Ellipse x:Name="InnerRing"
+                     Width="210"
+                     Height="210"
+                     StrokeThickness="3"
+                     RenderTransformOrigin="0.5,0.5"
+                     StrokeStartLineCap="Round"
+                     StrokeEndLineCap="Round"
+                     StrokeDashArray="1 4">
+
+                <Ellipse.Stroke>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#88FFFFFF" Offset="0.0"/>
+                        <GradientStop Color="#8800FFFF" Offset="1.0"/>
+                    </RadialGradientBrush>
+                </Ellipse.Stroke>
+
+                <Ellipse.RenderTransform>
+                    <RotateTransform Angle="0"/>
+                </Ellipse.RenderTransform>
+            </Ellipse>
+
+            <!-- Ortaya sonra butonları koyacağın alan (şu an boş) -->
+            <!--<Grid Width="160" Height="160">
+                ...
+            </Grid>-->
+        </Grid>
+    </Grid>
+
+    <!-- UserControl yüklendiğinde animasyonları başlat -->
+    <UserControl.Triggers>
+        <EventTrigger RoutedEvent="Loaded">
+            <BeginStoryboard Storyboard="{StaticResource FrameAnimationStoryboard}" />
+        </EventTrigger>
+    </UserControl.Triggers>
+</UserControl>
 
 
 ```
