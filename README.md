@@ -3273,7 +3273,8 @@ var ButtonsUI = {
 
 ```
 -------------------M2---------------
-```
+```SQL
+
 <Window x:Class="Spinner.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -3343,6 +3344,7 @@ var ButtonsUI = {
 </Window>
 
 ```
+```SQL
 -------------------M2---------------
 using System;
 using System.Collections.Generic;
@@ -3471,6 +3473,7 @@ namespace Spinner
 }
 
 ```
+```SQL
 -------------------M3---------------
 <Window x:Class="Spinner.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -3549,6 +3552,7 @@ namespace Spinner
 </Window>
 
 ```
+```SQL
 -------------------M3---------------
 using System;
 using System.Collections.Generic;
