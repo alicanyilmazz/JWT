@@ -3942,4 +3942,101 @@ public static class AuthorizationFailureReasons
     public const string Unauthorized = "unauthorized";
 }
 
+using Newtonsoft.Json;
+using System;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Web.Http.Controllers;
+using System.Web.Http.Filters;
+
+public class TokenRequestResponseLogAttribute : ActionFilterAttribute
+{
+    private const string Prefix = "[TokenApiLog]";
+
+    public override void OnActionExecuting(HttpActionContext actionContext)
+    {
+        try
+        {
+            string controllerName = actionContext.ControllerContext?.ControllerDescriptor?.ControllerName ?? "UnknownController";
+            string actionName = actionContext.ActionDescriptor?.ActionName ?? "UnknownAction";
+            string method = actionContext.Request?.Method?.Method ?? "UnknownMethod";
+            string url = actionContext.Request?.RequestUri?.ToString() ?? "UnknownUrl";
+
+            string requestBody = ReadRequestBody(actionContext.Request);
+
+            AtmLogManager.Log.Warn(
+                $"{Prefix} Incoming Request => Controller: {controllerName}, Action: {actionName}, Method: {method}, Url: {url}, Body: {requestBody}");
+        }
+        catch (Exception ex)
+        {
+            AtmLogManager.Log.Error($"{Prefix} Error while logging incoming request.", ex);
+        }
+
+        base.OnActionExecuting(actionContext);
+    }
+
+    public override void OnActionExecuted(HttpActionExecutedContext actionExecutedContext)
+    {
+        try
+        {
+            string controllerName = actionExecutedContext.ActionContext?.ControllerContext?.ControllerDescriptor?.ControllerName ?? "UnknownController";
+            string actionName = actionExecutedContext.ActionContext?.ActionDescriptor?.ActionName ?? "UnknownAction";
+
+            if (actionExecutedContext.Exception != null)
+            {
+                AtmLogManager.Log.Error(
+                    $"{Prefix} Action execution failed => Controller: {controllerName}, Action: {actionName}",
+                    actionExecutedContext.Exception);
+
+                base.OnActionExecuted(actionExecutedContext);
+                return;
+            }
+
+            object responseObject = actionExecutedContext.ActionContext?.Response;
+            string responseText = responseObject != null
+                ? responseObject.ToString()
+                : "Response is null";
+
+            AtmLogManager.Log.Warn(
+                $"{Prefix} Outgoing Response => Controller: {controllerName}, Action: {actionName}, Response: {responseText}");
+        }
+        catch (Exception ex)
+        {
+            AtmLogManager.Log.Error($"{Prefix} Error while logging outgoing response.", ex);
+        }
+
+        base.OnActionExecuted(actionExecutedContext);
+    }
+
+    private static string ReadRequestBody(HttpRequestMessage request)
+    {
+        if (request?.Content == null)
+            return "Request body is null";
+
+        try
+        {
+            var contentTask = request.Content.ReadAsStringAsync();
+            contentTask.Wait();
+
+            string body = contentTask.Result;
+
+            if (string.IsNullOrWhiteSpace(body))
+                return "Request body is empty";
+
+            request.Content = new StringContent(
+                body,
+                Encoding.UTF8,
+                request.Content.Headers?.ContentType?.MediaType ?? "application/json");
+
+            return body;
+        }
+        catch (Exception ex)
+        {
+            return $"Request body could not be read. Error: {ex.Message}";
+        }
+    }
+}
+
 ```
