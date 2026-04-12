@@ -3930,4 +3930,16 @@ public class ExternalHostAuthorize : AuthorizeAttribute
     }
 }
 
+
+public static class AuthorizationFailureReasons
+{
+    public const string Key = "AuthorizationFailureReason";
+
+    public const string AuthenticationFailed = "authentication_failed";
+    public const string TokenExpired = "token_expired";
+    public const string InvalidTokenType = "invalid_token_type";
+    public const string InsufficientRole = "insufficient_role";
+    public const string Unauthorized = "unauthorized";
+}
+
 ```
