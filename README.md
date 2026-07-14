@@ -3749,4 +3749,149 @@ CROSS APPLY SystemHealth.TargetData.nodes(
 ) AS XEventData(xdr)
 ORDER BY DeadlockTime DESC;
 
+SET NOCOUNT ON;
+SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+SELECT
+    SnapshotTime = SYSDATETIME(),
+
+    /* Bekleyen işlem */
+    BlockedSessionId            = r.session_id,
+    BlockingSessionId           = r.blocking_session_id,
+    DatabaseName                = DB_NAME(r.database_id),
+    BlockedRequestStatus        = r.status,
+    BlockedCommand              = r.command,
+    WaitType                    = r.wait_type,
+    WaitSeconds                 = CAST(r.wait_time / 1000.0 AS DECIMAL(18, 2)),
+    WaitResource                = r.wait_resource,
+    BlockedTransactionId        = r.transaction_id,
+    BlockedRequestOpenTranCount = r.open_transaction_count,
+    BlockedSessionOpenTranCount = s.open_transaction_count,
+
+    BlockedHost                 = s.host_name,
+    BlockedProgram              = s.program_name,
+    BlockedLogin                = s.login_name,
+    BlockedClientIP             = c.client_net_address,
+    BlockedRequestStartTime     = r.start_time,
+
+    BlockedStatement =
+        CASE
+            WHEN blocked_text.text IS NOT NULL
+            THEN SUBSTRING
+            (
+                blocked_text.text,
+                (r.statement_start_offset / 2) + 1,
+                (
+                    (
+                        CASE r.statement_end_offset
+                            WHEN -1 THEN DATALENGTH(blocked_text.text)
+                            ELSE r.statement_end_offset
+                        END
+                        - r.statement_start_offset
+                    ) / 2
+                ) + 1
+            )
+            ELSE CONVERT(NVARCHAR(MAX), blocked_input.event_info)
+        END,
+
+    BlockedBatchOrInput =
+        COALESCE
+        (
+            blocked_text.text,
+            CONVERT(NVARCHAR(MAX), blocked_input.event_info)
+        ),
+
+    /* Bekleten işlem */
+    BlockerSessionStatus        = blocker_session.status,
+    BlockerRequestStatus        = blocker_request.status,
+    BlockerCommand              = blocker_request.command,
+    BlockerOpenTranCount        = blocker_session.open_transaction_count,
+
+    BlockerHost                 = blocker_session.host_name,
+    BlockerProgram              = blocker_session.program_name,
+    BlockerLogin                = blocker_session.login_name,
+    BlockerClientIP             = blocker_connection.client_net_address,
+
+    BlockerRequestStartTime     = blocker_request.start_time,
+    BlockerLastRequestStartTime = blocker_session.last_request_start_time,
+    BlockerLastRequestEndTime   = blocker_session.last_request_end_time,
+
+    BlockerStatementOrLastInput =
+        CASE
+            WHEN blocker_request.sql_handle IS NOT NULL
+            THEN SUBSTRING
+            (
+                blocker_text.text,
+                (blocker_request.statement_start_offset / 2) + 1,
+                (
+                    (
+                        CASE blocker_request.statement_end_offset
+                            WHEN -1 THEN DATALENGTH(blocker_text.text)
+                            ELSE blocker_request.statement_end_offset
+                        END
+                        - blocker_request.statement_start_offset
+                    ) / 2
+                ) + 1
+            )
+            ELSE COALESCE
+            (
+                CONVERT(NVARCHAR(MAX), blocker_input.event_info),
+                blocker_text.text
+            )
+        END,
+
+    BlockerBatchOrLastBatch =
+        COALESCE
+        (
+            blocker_text.text,
+            CONVERT(NVARCHAR(MAX), blocker_input.event_info)
+        )
+
+FROM sys.dm_exec_requests AS r
+
+INNER JOIN sys.dm_exec_sessions AS s
+    ON s.session_id = r.session_id
+
+LEFT JOIN sys.dm_exec_connections AS c
+    ON c.session_id = r.session_id
+
+LEFT JOIN sys.dm_exec_sessions AS blocker_session
+    ON blocker_session.session_id = r.blocking_session_id
+
+LEFT JOIN sys.dm_exec_requests AS blocker_request
+    ON blocker_request.session_id = r.blocking_session_id
+
+LEFT JOIN sys.dm_exec_connections AS blocker_connection
+    ON blocker_connection.session_id = r.blocking_session_id
+
+OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) AS blocked_text
+
+OUTER APPLY sys.dm_exec_input_buffer
+(
+    r.session_id,
+    r.request_id
+) AS blocked_input
+
+OUTER APPLY sys.dm_exec_sql_text
+(
+    COALESCE
+    (
+        blocker_request.sql_handle,
+        blocker_connection.most_recent_sql_handle
+    )
+) AS blocker_text
+
+OUTER APPLY sys.dm_exec_input_buffer
+(
+    r.blocking_session_id,
+    NULL
+) AS blocker_input
+
+WHERE r.blocking_session_id > 0
+  AND r.session_id <> @@SPID
+
+ORDER BY
+    r.wait_time DESC,
+    r.session_id;
+
 ```
